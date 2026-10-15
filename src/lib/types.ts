@@ -162,6 +162,37 @@ export interface LiveEpgResponse {
   programs: EpgProgram[];
 }
 
+// —— 平台直播间（斗鱼 / 虎牙） ——
+
+export type LiveRoomPlatform = 'huya' | 'douyu';
+
+/** 直播间的一路候选流：FLV 延迟低优先，HLS 兜底（无 MSE 的 iOS Safari 只能原生 HLS） */
+export interface LiveRoomStream {
+  format: 'flv' | 'hls';
+  url: string;
+  /** 线路 / CDN 标识，仅用于排障展示 */
+  label?: string;
+}
+
+/**
+ * 直播间解析结果（/api/live/room）。
+ * roomUrl 一律是数字房间号形式的规范地址：别名地址（huya.com/uzi）解析后也落到同一标识，
+ * 收藏 / 最近观看 / 频道去重都以它为键。
+ */
+export interface LiveRoomInfo {
+  platform: LiveRoomPlatform;
+  roomUrl: string;
+  roomId: string;
+  /** 主播名 */
+  owner: string;
+  /** 房间标题（未开播时为上次标题） */
+  title: string;
+  avatar?: string;
+  living: boolean;
+  /** 开播时的候选流，按推荐顺序排列，播放器依次尝试；未开播为空数组 */
+  streams: LiveRoomStream[];
+}
+
 // —— 数据源订阅 ——
 
 /** 订阅条目未被导入（跳过）的原因分类 */
