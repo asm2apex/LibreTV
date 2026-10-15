@@ -4,6 +4,8 @@ import { checkLiveUrlAllowed } from '@/lib/ssrf';
 import { fetchUpstream } from '@/lib/fetch-utils';
 import { getLiveCache, setLiveCache } from '@/lib/live-cache';
 import { parseM3u } from '@/lib/m3u-parser';
+import { LIVE_ROOM_PLATFORM_LABEL, isLiveRoomUrl, liveRoomChannel } from '@/lib/live-room';
+import { LiveRoomError, resolveLiveRoom } from '@/lib/live-room-resolve';
 import type { LivePlaylistResponse } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -45,7 +47,8 @@ function toM3uText(playlist: LivePlaylistResponse): string {
  * 拉取并解析 M3U 直播订阅。
  * GET /api/live/playlist?url=<m3u>&force=1&format=json|m3u
  * - 服务端缓存 10 分钟，force=1 跳过缓存强制刷新；
- * - format=m3u 返回解析后的标准 M3U 文本（订阅导出）。
+ * - format=m3u 返回解析后的标准 M3U 文本（订阅导出）；
+ * - 斗鱼 / 虎牙直播间地址不是 M3U：服务端解析成单频道播放列表（见 live-room-resolve）。
  */
 export async function GET(req: Request) {
   const guarded = guardRequest(req);
@@ -61,8 +64,21 @@ export async function GET(req: Request) {
   const verdict = await checkLiveUrlAllowed(url);
   if (!verdict.ok) return jsonError(verdict.reason, 403);
 
-  // 直播专用缓存：数千频道的播放列表 JSON 不与豆瓣等热点数据共池（通用缓存超限会整体 clear）
-  let playlist: LivePlaylistResponse | undefined = force ? undefined : getLiveCache<LivePlaylistResponse>(cacheKey(url));
+  let playlist: LivePlaylistResponse | undefined;
+  if (isLiveRoomUrl(url)) {
+    // 平台直播间：一个房间一个频道，按平台分组。解析器自带 60s 缓存与并发合流，不再进 live-cache
+    try {
+      const info = await resolveLiveRoom(url, { force });
+      const label = LIVE_ROOM_PLATFORM_LABEL[info.platform];
+      playlist = { name: `${label} · ${info.owner || info.roomId}`, channels: [liveRoomChannel(info)], groups: [label] };
+    } catch (err) {
+      if (err instanceof LiveRoomError) return jsonError(err.message, err.status);
+      return jsonError(`直播间解析失败: ${err instanceof Error ? err.message : '未知错误'}`, 502);
+    }
+  } else {
+    // 直播专用缓存：数千频道的播放列表 JSON 不与豆瓣等热点数据共池（通用缓存超限会整体 clear）
+    playlist = force ? undefined : getLiveCache<LivePlaylistResponse>(cacheKey(url));
+  }
   if (!playlist) {
     let text: string;
     try {

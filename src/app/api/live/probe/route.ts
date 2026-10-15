@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { guardRequest, jsonError } from '@/lib/api-guard';
 import { fetchUpstreamWithMeta } from '@/lib/fetch-utils';
+import { isLiveRoomUrl } from '@/lib/live-room';
+import { resolveLiveRoom } from '@/lib/live-room-resolve';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,6 +20,7 @@ export const dynamic = 'force-dynamic';
  *
  * 非 m3u8（FLV 等）维持单级探测。结果 level 标识探测深度：
  *   segment=分片级（最可信）/ manifest=仅 manifest 级 / head=单级直探
+ *   room=平台直播间（斗鱼 / 虎牙）：可用 = 开播中，由解析器判断，不打房间页（HTML 会被判成非流媒体）
  * 200/206 响应头视为可达；仍不保证编码可解码（H.265 等）。
  *
  * 性能与准确性要点：
@@ -72,7 +75,7 @@ interface ProbeOutcome {
   ok: boolean;
   status?: number;
   ms?: number;
-  level?: 'segment' | 'manifest' | 'head';
+  level?: 'segment' | 'manifest' | 'head' | 'room';
   error?: string;
   /** master playlist 的 CODECS 属性（如 hvc1.1.6.L93.B0,mp4a.40.2），用于前端提示编码兼容性 */
   codec?: string;
@@ -259,9 +262,25 @@ async function measureThroughput(segmentUrl: string, referer?: string): Promise<
   }
 }
 
+/**
+ * 平台直播间：可用 = 开播中。level=room 让前端按「开播 / 未开播」而不是分片语义展示；
+ * 解析失败（平台改版、网络）与未开播分开：前者带错误原因，后者 error 固定为「未开播」。
+ */
+async function probeRoom(url: string, start: number): Promise<ProbeOutcome> {
+  try {
+    const info = await resolveLiveRoom(url);
+    return info.living
+      ? { url, ok: true, ms: elapsed(start), level: 'room' }
+      : { url, ok: false, ms: elapsed(start), level: 'room', error: '未开播' };
+  } catch (err) {
+    return { url, ok: false, ms: elapsed(start), error: err instanceof Error ? err.message : '直播间解析失败' };
+  }
+}
+
 /** 两级探测：manifest →（master 时穿透 variant）→ 分片 */
 async function probeOne(url: string): Promise<ProbeOutcome> {
   const start = performance.now();
+  if (isLiveRoomUrl(url)) return probeRoom(url, start);
   const deadline = start + URL_BUDGET_MS;
   const remaining = () => deadline - performance.now();
 
@@ -533,9 +552,11 @@ function cacheSet(url: string, outcome: ProbeOutcome): void {
       if (oldest !== undefined) probeCache.delete(oldest);
     }
   }
+  // 直播间的开播状态随时会变：开播中也只按失败侧的短 TTL 缓存
+  const stable = outcome.ok && outcome.level !== 'room';
   probeCache.set(url, {
     outcome,
-    expiresAt: Date.now() + (outcome.ok ? CACHE_TTL_OK_MS : CACHE_TTL_FAIL_MS),
+    expiresAt: Date.now() + (stable ? CACHE_TTL_OK_MS : CACHE_TTL_FAIL_MS),
   });
 }
 

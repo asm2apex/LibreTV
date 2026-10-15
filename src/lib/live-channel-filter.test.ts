@@ -157,3 +157,21 @@ describe('sortChannels', () => {
     expect(sortChannels(list, 'recent', { recentOrder }).map((c) => c.url)).toEqual(['u3', 'u1', 'u2']);
   });
 });
+
+describe('平台直播间（level=room）', () => {
+  const living = { ok: true, level: 'room' as const };
+  const offline = { ok: false, level: 'room' as const };
+
+  it('开播中既算绿点也算可播；未开播两档都不算', () => {
+    expect(matchesAlive(living, 'green')).toBe(true);
+    expect(matchesAlive(living, 'ok')).toBe(true);
+    expect(matchesAlive(offline, 'green')).toBe(false);
+    expect(matchesAlive(offline, 'ok')).toBe(false);
+  });
+
+  it('排序权重：开播中与绿点分片同级，排在弱验证之前；未开播按失败处理', () => {
+    expect(probeRank(living)).toBe(0);
+    expect(probeRank({ ok: true, level: 'head' })).toBe(2);
+    expect(probeRank(offline)).toBe(4);
+  });
+});

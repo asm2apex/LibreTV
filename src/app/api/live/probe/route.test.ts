@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { POST } from './route';
 import { SESSION_COOKIE, signSession } from '@/lib/auth';
+import { resolveLiveRoom } from '@/lib/live-room-resolve';
 
 /**
  * 测活接口单测：流式 NDJSON、codec 解析、内容校验、结果缓存、内网放行。
@@ -287,5 +288,40 @@ describe('POST /api/live/probe', () => {
     } finally {
       delete process.env.LIVE_ALLOW_PRIVATE;
     }
+  });
+});
+
+// —— 平台直播间：可用 = 开播中，由解析器判断（解析器另有单测，这里 mock 掉） ——
+
+vi.mock('@/lib/live-room-resolve', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/live-room-resolve')>();
+  return { ...actual, resolveLiveRoom: vi.fn() };
+});
+
+describe('平台直播间测活', () => {
+  const resolveMock = vi.mocked(resolveLiveRoom);
+
+  it('开播中 → ok 且 level=room；未开播 → 不可用且 error=未开播；都不请求房间页', async () => {
+    const { fn } = mockUpstream();
+    resolveMock.mockImplementation(async (url: string) =>
+      url.includes('huya')
+        ? { platform: 'huya', roomUrl: 'https://www.huya.com/100', roomId: '100', owner: 'Uzi', title: 't', living: true, streams: [{ format: 'flv', url: 'https://al.flv.huya.com/src/a.flv?x=1' }] }
+        : { platform: 'douyu', roomUrl: 'https://www.douyu.com/9999', roomId: '9999', owner: 'yyf', title: 't', living: false, streams: [] }
+    );
+    const res = await POST(makeRequest(['https://www.huya.com/100', 'https://www.douyu.com/9999'], true));
+    const lines = await readNdjson(res);
+    expect(lines.find((l) => l.url === 'https://www.huya.com/100')).toMatchObject({ ok: true, level: 'room' });
+    expect(lines.find((l) => l.url === 'https://www.douyu.com/9999')).toMatchObject({ ok: false, level: 'room', error: '未开播' });
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('解析失败 → 不可用并带原因，不带 room 级别（与未开播区分）', async () => {
+    mockUpstream();
+    resolveMock.mockRejectedValueOnce(new Error('虎牙房间页结构已变化，需要更新适配'));
+    const res = await POST(makeRequest(['https://www.huya.com/101'], false));
+    const body = (await res.json()) as { results: { ok: boolean; error?: string; level?: string }[] };
+    expect(body.results[0].ok).toBe(false);
+    expect(body.results[0].level).toBeUndefined();
+    expect(body.results[0].error).toContain('结构已变化');
   });
 });

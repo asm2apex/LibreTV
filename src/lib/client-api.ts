@@ -1,6 +1,6 @@
 'use client';
 
-import type { SearchResponse, SearchStreamEvent, SourceSearchOutcome, VideoDetail, DoubanResponse, BangumiCalendarResponse, AuthStatusResponse, SourceConfig, SearchResultItem, LivePlaylistResponse, LiveEpgResponse, SourceListPayload, DanmakuResponse } from './types';
+import type { SearchResponse, SearchStreamEvent, SourceSearchOutcome, VideoDetail, DoubanResponse, BangumiCalendarResponse, AuthStatusResponse, SourceConfig, SearchResultItem, LivePlaylistResponse, LiveEpgResponse, LiveRoomInfo, SourceListPayload, DanmakuResponse } from './types';
 
 /**
  * 客户端 API 封装。401 时触发全局事件打开登录框，
@@ -24,8 +24,8 @@ export interface LiveProbeResult {
   status?: number;
   /** 分片级探测：仅统计分片往返耗时 */
   ms?: number;
-  /** segment=分片级（最可信）/ manifest=仅列表可达 / head=直链单级 */
-  level?: 'segment' | 'manifest' | 'head';
+  /** segment=分片级（最可信）/ manifest=仅列表可达 / head=直链单级 / room=平台直播间（ok 即开播中） */
+  level?: 'segment' | 'manifest' | 'head' | 'room';
   error?: string;
   /** master playlist 的 CODECS，用于前端提示 H.265 等不可解码情况 */
   codec?: string;
@@ -246,6 +246,13 @@ export const api = {
     return request<LivePlaylistResponse>(`/api/live/playlist?${sp.toString()}`, { signal });
   },
 
+  /** 平台直播间（斗鱼 / 虎牙）解析：主播、标题、开播状态与候选流；force 跳过服务端缓存（流地址失效时重取） */
+  liveRoom: (url: string, force = false, signal?: AbortSignal) => {
+    const sp = new URLSearchParams({ url });
+    if (force) sp.set('force', '1');
+    return request<LiveRoomInfo>(`/api/live/room?${sp.toString()}`, { signal });
+  },
+
   /** 查询某频道的节目单（服务端缓存 6h） */
   liveEpg: (epgUrl: string, tvgId: string, force = false, signal?: AbortSignal) => {
     const sp = new URLSearchParams({ url: epgUrl, channel: tvgId });
@@ -253,14 +260,29 @@ export const api = {
     return request<LiveEpgResponse>(`/api/live/epg?${sp.toString()}`, { signal });
   },
 
-  /** 直播订阅探活：以拉取解析耗时与频道数衡量可用性 */
+  /**
+   * 直播源探活：以拉取解析耗时与频道数衡量可用性。
+   * 附带播放列表名（M3U 的 #PLAYLIST，直播间为「平台 · 主播」），供未命名的源回填名称。
+   */
   liveTest: async (url: string) => {
     const start = performance.now();
     try {
       const playlist = await api.livePlaylist(url, true);
-      return { ok: true, ms: Math.round(performance.now() - start), count: playlist.channels.length, error: undefined as string | undefined };
+      return {
+        ok: true,
+        ms: Math.round(performance.now() - start),
+        count: playlist.channels.length,
+        name: playlist.name,
+        error: undefined as string | undefined,
+      };
     } catch (err) {
-      return { ok: false, ms: Math.round(performance.now() - start), count: 0, error: err instanceof Error ? err.message : '失败' };
+      return {
+        ok: false,
+        ms: Math.round(performance.now() - start),
+        count: 0,
+        name: undefined as string | undefined,
+        error: err instanceof Error ? err.message : '失败',
+      };
     }
   },
 

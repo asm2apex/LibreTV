@@ -462,12 +462,16 @@ const ChannelRow = memo(function ChannelRow({
   const isHevc = Boolean(probe?.codec && /hvc1|hev1|hevc/i.test(probe.codec));
   // 源限速：分片可达但吞吐不足，绿点却播不了的主因
   const slow = isSlowSource(probe);
-  // 状态点语义：绿=分片级验证且吞吐达标；琥珀=限速/弱验证（直链/清单级）或超时；红=不可达
-  const weakLevel = probe?.ok && probe.level !== 'segment';
+  // 平台直播间（斗鱼 / 虎牙）：可用 = 开播中，没有分片 / 吞吐语义；未开播用文字徽标而不是红点
+  const isRoom = probe?.level === 'room';
+  const roomOffline = Boolean(isRoom && probe && !probe.ok);
+  // 状态点语义：绿=分片级验证且吞吐达标（或直播间开播中）；琥珀=限速/弱验证（直链/清单级）或超时；红=不可达
+  const weakLevel = probe?.ok && probe.level !== 'segment' && !isRoom;
   const amber = Boolean(probe && (weakLevel || (!probe.ok && probe.timedOut) || slow));
   const dotClass = amber ? 'bg-warning' : probe?.ok ? 'bg-success' : 'bg-danger';
-  const levelText =
-    probe?.level === 'segment'
+  const levelText = isRoom
+    ? '直播间开播中'
+    : probe?.level === 'segment'
       ? '分片可用'
       : probe?.level === 'head'
         ? '直链可达（未验证可播性）'
@@ -522,7 +526,7 @@ const ChannelRow = memo(function ChannelRow({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
-            {probe && (
+            {probe && !roomOffline && (
               <span
                 className={cn('w-1.5 h-1.5 rounded-full shrink-0', dotClass)}
                 title={probeTitle}
@@ -531,6 +535,11 @@ const ChannelRow = memo(function ChannelRow({
             <span className={cn('text-xs truncate', active ? 'text-accent font-medium' : 'text-content')}>
               {channel.name}
             </span>
+            {roomOffline && (
+              <span className="shrink-0 rounded-full bg-chip px-1.5 text-[10px] text-faint" title="主播未开播">
+                未开播
+              </span>
+            )}
             {isHevc && (
               <span
                 className="shrink-0 rounded-full bg-warning/15 px-1.5 text-[10px] font-medium text-warning"

@@ -10,7 +10,8 @@
 export interface ProbeLike {
   ok: boolean;
   ms?: number;
-  level?: 'segment' | 'manifest' | 'head';
+  /** room=平台直播间：ok 即开播中，没有分片 / 吞吐语义 */
+  level?: 'segment' | 'manifest' | 'head' | 'room';
   timedOut?: boolean;
   kbps?: number;
 }
@@ -64,7 +65,8 @@ export function matchesKeyword(channel: KeywordMatchable, normalizedKeyword: str
 export function matchesAlive(probe: ProbeLike | undefined, mode: AliveFilter): boolean {
   if (mode === 'off') return true;
   if (!probe?.ok) return false;
-  if (mode === 'green') return probe.level === 'segment' && !isSlowSource(probe);
+  // 直播间没有分片与吞吐概念：开播中即视为绿点
+  if (mode === 'green') return probe.level === 'room' || (probe.level === 'segment' && !isSlowSource(probe));
   return true;
 }
 
@@ -72,6 +74,7 @@ export function matchesAlive(probe: ProbeLike | undefined, mode: AliveFilter): b
 export function probeRank(probe: ProbeLike | undefined): number {
   if (!probe) return 5;
   if (probe.ok) {
+    if (probe.level === 'room') return 0;
     if (probe.level !== 'segment') return 2;
     return isSlowSource(probe) ? 1 : 0;
   }

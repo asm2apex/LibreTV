@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/client-api';
-import { LIVE_PROBE_TTL_MS, useAppStore, type LiveProbeEntry } from '@/lib/store';
+import { LIVE_PROBE_TTL_MS, LIVE_ROOM_PROBE_TTL_MS, useAppStore, type LiveProbeEntry } from '@/lib/store';
+import { isLiveRoomUrl } from '@/lib/live-room';
 
 /**
  * 直播频道批量测活 hook：
  * - 结果持久化到 store（liveProbeResults），6 小时内直接复用（LIVE_PROBE_TTL_MS）；
+ *   平台直播间（斗鱼 / 虎牙）的结果是开播状态，只保留 5 分钟（LIVE_ROOM_PROBE_TTL_MS）；
  * - 触发探测时只补测缺失或已过期的频道，全部仍有效则提示跳过；
  * - 服务端以 NDJSON 流式逐条返回，结果边测边写入列表（节流合并，避免高频 re-render）；
  * - 每批 CHUNK_SIZE 条并行 CHUNK_CONCURRENCY 批，服务端批内并发 16、单 host 在途 ≤3（按源排队，不冲垮弱源）；
@@ -18,7 +20,8 @@ import { LIVE_PROBE_TTL_MS, useAppStore, type LiveProbeEntry } from '@/lib/store
 export interface ProbeResult {
   ok: boolean;
   ms?: number;
-  level?: 'segment' | 'manifest' | 'head';
+  /** room=平台直播间：ok 即开播中 */
+  level?: 'segment' | 'manifest' | 'head' | 'room';
   error?: string;
   codec?: string;
   /** 因超时失败（源可能只是慢） */
@@ -37,6 +40,11 @@ const CHUNK_CONCURRENCY = 2;
 const MAX_TARGETS = 20_000;
 /** 流式结果的写回节流间隔：把高频到达的结果合并成一次 store 更新 */
 const FLUSH_INTERVAL_MS = 200;
+
+/** 结果有效期按频道类型：直播间的开播状态会变，不能像 IPTV 源那样留 6 小时 */
+function ttlOf(url: string): number {
+  return isLiveRoomUrl(url) ? LIVE_ROOM_PROBE_TTL_MS : LIVE_PROBE_TTL_MS;
+}
 
 export function useLiveProbe() {
   const cache = useAppStore((s) => s.liveProbeResults);
@@ -68,7 +76,7 @@ export function useLiveProbe() {
     const map = new Map<string, ProbeResult>();
     const identities = identityRef.current;
     for (const [url, e] of Object.entries(cache)) {
-      if (now - e.timestamp >= LIVE_PROBE_TTL_MS) continue;
+      if (now - e.timestamp >= ttlOf(url)) continue;
       const known = identities.get(url);
       const result =
         known && known.timestamp === e.timestamp
@@ -125,10 +133,10 @@ export function useLiveProbe() {
       const cached = useAppStore.getState().liveProbeResults;
       const stale = urls.filter((u) => {
         const e = cached[u];
-        return !e || now - e.timestamp >= LIVE_PROBE_TTL_MS;
+        return !e || now - e.timestamp >= ttlOf(u);
       });
       if (stale.length === 0) {
-        showHint('测活结果 6 小时内有效，无需重测');
+        showHint('测活结果仍在有效期内，无需重测');
         return;
       }
 

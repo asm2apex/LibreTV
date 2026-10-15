@@ -104,12 +104,15 @@ export interface LiveRecentEntry {
 
 /** 测活结果有效期：6 小时内直接复用，过期后重新探测 */
 export const LIVE_PROBE_TTL_MS = 6 * 60 * 60 * 1000;
+/** 平台直播间（斗鱼 / 虎牙）的测活结果有效期：开播状态随时会变，只留 5 分钟 */
+export const LIVE_ROOM_PROBE_TTL_MS = 5 * 60 * 1000;
 
 /** 直播测活结果缓存条目（按流 URL 唯一标识） */
 export interface LiveProbeEntry {
   ok: boolean;
   ms?: number;
-  level?: 'segment' | 'manifest' | 'head';
+  /** room=平台直播间：ok 即开播中，没有分片 / 吞吐语义 */
+  level?: 'segment' | 'manifest' | 'head' | 'room';
   error?: string;
   /** 流编码（master playlist 的 CODECS 属性），用于提示 H.265 等不可解码情况 */
   codec?: string;
