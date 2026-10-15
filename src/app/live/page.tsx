@@ -299,6 +299,15 @@ function LiveContent() {
                     {isRoom && room && !room.living && (
                       <span className="tag bg-chip text-faint shrink-0">未开播</span>
                     )}
+                    {isRoom && room?.quality && (
+                      <span
+                        className="tag bg-chip text-faint shrink-0"
+                        title={room.loggedIn ? '已用斗鱼登录态取流' : '匿名取流只给高清档，在设置 → 直播源登录斗鱼账号可取更高画质'}
+                      >
+                        {room.quality}
+                        {room.loggedIn ? ' · 已登录' : ''}
+                      </span>
+                    )}
                   </div>
                   {/* 直播间显示房间标题（解析完成前先显示地址），普通频道显示流地址 */}
                   <p className="text-xs text-faint truncate mt-0.5">{(isRoom && room?.title) || currentChannel.url}</p>

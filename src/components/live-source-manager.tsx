@@ -9,6 +9,7 @@ import { SearchInput, SectionTitle, TestBadge, useSourceTests } from './settings
 import { EmptyState } from './states';
 import { Icon } from './icon';
 import { LIVE_ROOM_PLATFORM_LABEL, isLiveRoomUrl, liveRoomPlatformOf } from '@/lib/live-room';
+import { DouyuAccountCard } from './douyu-account';
 
 /**
  * 直播源管理（嵌入设置抽屉）：M3U 订阅与斗鱼 / 虎牙直播间的添加 / 探活 / 移除 / 导出，
@@ -108,6 +109,7 @@ export function LiveSourceManager() {
   const empty = store.liveEnvSources.length === 0 && store.liveSubscriptions.length === 0;
 
   return (
+    <>
     <section>
       <SectionTitle
         title="直播源"
@@ -304,6 +306,9 @@ export function LiveSourceManager() {
         </>
       )}
     </section>
+    {/* 斗鱼直播间的登录态：扫码登录后取流带登录 cookie（画质 / 断流见卡片说明） */}
+    <DouyuAccountCard />
+    </>
   );
 }
 

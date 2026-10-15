@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import vm from 'node:vm';
+import { deviceIdOf } from './douyu-auth';
 import { fetchUpstream, fetchUpstreamWithMeta, getCache, setCache } from './fetch-utils';
 import { canonicalLiveRoomUrl, parseLiveRoomUrl } from './live-room';
 import type { LiveRoomInfo, LiveRoomStream } from './types';
@@ -37,17 +38,30 @@ const CACHE_TTL_MS = 60_000;
 /** 同一房间并发请求合流：列表与测活同时触发时只打平台一次 */
 const inflight = new Map<string, Promise<LiveRoomInfo>>();
 
-export async function resolveLiveRoom(url: string, options: { force?: boolean } = {}): Promise<LiveRoomInfo> {
+/** 斗鱼登录态：主站 acf_* cookie 串与 uid（uid 只用来区分缓存，匿名与各账号的结果互不串） */
+export interface DouyuAuthContext {
+  cookie: string;
+  uid: string;
+}
+
+export interface ResolveOptions {
+  force?: boolean;
+  /** 斗鱼取流带登录态：接口才给蓝光 / 原画，且匿名流约 5 分钟一断的问题消失 */
+  douyu?: DouyuAuthContext;
+}
+
+export async function resolveLiveRoom(url: string, options: ResolveOptions = {}): Promise<LiveRoomInfo> {
   const ref = parseLiveRoomUrl(url);
   if (!ref) throw new LiveRoomError('仅支持斗鱼 / 虎牙的直播间地址', 400);
-  const key = `liveroom:${ref.platform}:${ref.roomKey.toLowerCase()}`;
+  const douyu = ref.platform === 'douyu' ? options.douyu : undefined;
+  const key = `liveroom:${ref.platform}:${ref.roomKey.toLowerCase()}:${douyu ? `u${douyu.uid}` : 'anon'}`;
   if (!options.force) {
     const hit = getCache<LiveRoomInfo>(key);
     if (hit) return hit;
     const pending = inflight.get(key);
     if (pending) return pending;
   }
-  const task = (ref.platform === 'huya' ? resolveHuya(ref.roomKey) : resolveDouyu(ref.roomKey))
+  const task = (ref.platform === 'huya' ? resolveHuya(ref.roomKey) : resolveDouyu(ref.roomKey, douyu))
     .then((info) => {
       setCache(key, info, CACHE_TTL_MS);
       return info;
@@ -219,16 +233,31 @@ interface DouyuBetard {
 interface DouyuH5Play {
   error?: number;
   msg?: string;
-  data?: { rtmp_url?: string; rtmp_live?: string; rtmp_cdn?: string };
+  data?: {
+    rtmp_url?: string;
+    rtmp_live?: string;
+    rtmp_cdn?: string;
+    /** 实际下发的画质档，对应 multirates[].rate */
+    rate?: number;
+    multirates?: { name?: string; rate?: number }[];
+  };
 }
 
-/** 斗鱼接口：非 JSON 返回 null（房间不存在时 betard 回的是 HTML 页） */
-async function fetchDouyuJson<T>(url: string, init: { method?: string; body?: string; headers?: Record<string, string> } = {}): Promise<T | null> {
+/** 斗鱼接口：非 JSON 返回 null（房间不存在时 betard 回的是 HTML 页）；带登录 cookie 时所有请求都带 */
+async function fetchDouyuJson<T>(
+  url: string,
+  init: { method?: string; body?: string; headers?: Record<string, string>; cookie?: string } = {}
+): Promise<T | null> {
   const res = await fetchUpstream(url, {
     timeoutMs: TIMEOUT_MS,
     method: init.method,
     body: init.body,
-    headers: { 'User-Agent': UA, Referer: `${DOUYU_ORIGIN}/`, ...init.headers },
+    headers: {
+      'User-Agent': UA,
+      Referer: `${DOUYU_ORIGIN}/`,
+      ...(init.cookie ? { Cookie: init.cookie } : {}),
+      ...init.headers,
+    },
   });
   if (!res.ok) throw new LiveRoomError(`斗鱼接口响应 ${res.status}`);
   const body = await res.text();
@@ -239,14 +268,15 @@ async function fetchDouyuJson<T>(url: string, init: { method?: string; body?: st
   }
 }
 
-async function resolveDouyu(roomKey: string): Promise<LiveRoomInfo> {
+async function resolveDouyu(roomKey: string, auth?: DouyuAuthContext): Promise<LiveRoomInfo> {
   const rid = /^\d+$/.test(roomKey) ? roomKey : await douyuRoomIdOfAlias(roomKey);
-  const room = (await fetchDouyuJson<DouyuBetard>(`${DOUYU_ORIGIN}/betard/${rid}`))?.room;
+  const room = (await fetchDouyuJson<DouyuBetard>(`${DOUYU_ORIGIN}/betard/${rid}`, { cookie: auth?.cookie }))?.room;
   if (!room || !room.room_id) throw new LiveRoomError('斗鱼直播间不存在', 404);
   const roomId = String(room.room_id);
   // show_status 1=开播 2=未开播；videoLoop 1=录像轮播，不算直播（与 bililive-go 口径一致）
   const living = Number(room.show_status) === 1 && Number(room.videoLoop ?? 0) === 0;
   const avatar = (room.avatar ?? {}) as { middle?: string; big?: string };
+  const play = living ? await douyuStreams(roomId, auth) : { streams: [], quality: undefined };
   return {
     platform: 'douyu',
     roomUrl: canonicalLiveRoomUrl('douyu', roomId),
@@ -255,7 +285,9 @@ async function resolveDouyu(roomKey: string): Promise<LiveRoomInfo> {
     title: text(room.room_name),
     avatar: optionalUrl(avatar.middle ?? avatar.big ?? room.avatar_mid ?? room.owner_avatar),
     living,
-    streams: living ? await douyuStreams(roomId) : [],
+    streams: play.streams,
+    quality: play.quality,
+    loggedIn: Boolean(auth),
   };
 }
 
@@ -282,14 +314,20 @@ async function douyuRoomIdOfAlias(alias: string): Promise<string> {
   throw new LiveRoomError('斗鱼直播间不存在', 404);
 }
 
-async function douyuStreams(rid: string): Promise<LiveRoomStream[]> {
+async function douyuStreams(
+  rid: string,
+  auth?: DouyuAuthContext
+): Promise<{ streams: LiveRoomStream[]; quality?: string }> {
   const enc = await fetchDouyuJson<{ error?: number; data?: Record<string, string> }>(
-    `${DOUYU_ORIGIN}/swf_api/homeH5Enc?rids=${rid}`
+    `${DOUYU_ORIGIN}/swf_api/homeH5Enc?rids=${rid}`,
+    { cookie: auth?.cookie }
   );
   const jsEnc = enc?.data?.[`room${rid}`];
   if (!jsEnc) throw new LiveRoomError('斗鱼签名脚本获取失败');
-  const params = douyuSign(jsEnc, rid);
-  // rate=0 让服务端选默认档；匿名请求不论要哪一档都只给到「高清」，更高画质需登录态，本站不做。
+  // 带登录态时签名用的设备号必须是 cookie 里那一个，否则偶发签名被拒退回匿名
+  const did = (auth && deviceIdOf(auth.cookie)) || DOUYU_DID;
+  const params = douyuSign(jsEnc, rid, did);
+  // rate=0 让服务端选默认档：匿名不论要哪一档都只给「高清」，带登录态才给蓝光 / 原画。
   // hevc=0 只要 H.264，浏览器软解无压力。
   const play = await fetchDouyuJson<DouyuH5Play>(`${DOUYU_ORIGIN}/lapi/live/getH5Play/${rid}`, {
     method: 'POST',
@@ -299,17 +337,22 @@ async function douyuStreams(rid: string): Promise<LiveRoomStream[]> {
       Origin: DOUYU_ORIGIN,
       Referer: `${DOUYU_ORIGIN}/${rid}`,
     },
+    cookie: auth?.cookie,
   });
   if (!play || play.error !== 0 || !play.data?.rtmp_url || !play.data.rtmp_live) {
     throw new LiveRoomError(`斗鱼取流失败：${play?.msg || `错误码 ${play?.error ?? '未知'}`}`);
   }
-  return [
-    {
-      format: 'flv',
-      url: httpsify(`${play.data.rtmp_url}/${play.data.rtmp_live}`),
-      label: play.data.rtmp_cdn,
-    },
-  ];
+  const quality = play.data.multirates?.find((m) => m.rate === play.data?.rate)?.name || undefined;
+  return {
+    streams: [
+      {
+        format: 'flv',
+        url: httpsify(`${play.data.rtmp_url}/${play.data.rtmp_live}`),
+        label: play.data.rtmp_cdn,
+      },
+    ],
+    quality,
+  };
 }
 
 /**
@@ -318,7 +361,7 @@ async function douyuStreams(rid: string): Promise<LiveRoomStream[]> {
  * vm 不是安全边界：脚本来自 douyu.com 的 HTTPS 响应，信任等级与 bililive-go 一致；
  * timeout 只防脚本死循环拖住请求。
  */
-export function douyuSign(jsEnc: string, rid: string): string {
+export function douyuSign(jsEnc: string, rid: string, did: string = DOUYU_DID): string {
   if (!/function\s+ub98484234\s*\(/.test(jsEnc)) {
     throw new LiveRoomError('斗鱼签名脚本格式已变化，需要更新适配');
   }
@@ -332,7 +375,7 @@ export function douyuSign(jsEnc: string, rid: string): string {
   let result: unknown;
   try {
     result = vm.runInContext(
-      `${jsEnc}\n;ub98484234(${JSON.stringify(rid)}, ${JSON.stringify(DOUYU_DID)}, ${tt})`,
+      `${jsEnc}\n;ub98484234(${JSON.stringify(rid)}, ${JSON.stringify(did)}, ${tt})`,
       context,
       { timeout: 3000 }
     );

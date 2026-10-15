@@ -255,6 +255,50 @@ describe('斗鱼', () => {
   });
 });
 
+describe('斗鱼登录态', () => {
+  function installLiveRoom(rid: number) {
+    state.routes.set(`https://www.douyu.com/betard/${rid}`, () => json(douyuRoom(rid, 1)));
+    state.routes.set(`https://www.douyu.com/swf_api/homeH5Enc?rids=${rid}`, () => json(JSON.stringify({ error: 0, data: { [`room${rid}`]: DOUYU_JS } })));
+    state.routes.set(`https://www.douyu.com/lapi/live/getH5Play/${rid}`, () =>
+      json(JSON.stringify({ error: 0, msg: 'ok', data: { rtmp_url: 'https://cdn.test/live', rtmp_live: `${rid}r_8000.flv?x=1`, rtmp_cdn: 'hw-h5', rate: 8, multirates: [{ name: '原画', rate: 0 }, { name: '蓝光8M', rate: 8 }, { name: '高清', rate: 2 }] } }))
+    );
+  }
+
+  it('带登录态：所有斗鱼请求带 Cookie，签名用 cookie 里的设备号，返回画质档与 loggedIn', async () => {
+    installLiveRoom(9001);
+    const auth = { cookie: 'acf_auth=AUTH; acf_uid=42; dy_did=cookie-device', uid: '42' };
+    const info = await resolveLiveRoom('https://www.douyu.com/9001', { douyu: auth });
+    expect(info).toMatchObject({ living: true, quality: '蓝光8M', loggedIn: true });
+    const douyuCalls = state.calls.filter((c) => c.url.includes('douyu.com'));
+    expect(douyuCalls.length).toBe(3);
+    for (const c of douyuCalls) expect((c.init?.headers as Record<string, string>).Cookie).toBe(auth.cookie);
+    const body = new URLSearchParams(String(state.calls.find((c) => c.url.endsWith('/getH5Play/9001'))!.init?.body));
+    expect(body.get('did')).toBe('cookie-device');
+    expect(body.get('sign')).toBe(md5(`9001cookie-device${body.get('tt')}220120261015`));
+  });
+
+  it('匿名与登录态分开缓存；匿名请求不带 Cookie，loggedIn=false', async () => {
+    installLiveRoom(9002);
+    const anon = await resolveLiveRoom('https://www.douyu.com/9002');
+    expect(anon.loggedIn).toBe(false);
+    expect(state.calls.every((c) => !(c.init?.headers as Record<string, string>).Cookie)).toBe(true);
+    const before = state.calls.length;
+    const logged = await resolveLiveRoom('https://www.douyu.com/9002', { douyu: { cookie: 'acf_uid=7; acf_auth=x', uid: '7' } });
+    expect(logged.loggedIn).toBe(true);
+    expect(state.calls.length).toBeGreaterThan(before);
+    // 再来一次登录态请求命中登录态缓存
+    const again = state.calls.length;
+    await resolveLiveRoom('https://www.douyu.com/9002', { douyu: { cookie: 'acf_uid=7; acf_auth=x', uid: '7' } });
+    expect(state.calls.length).toBe(again);
+  });
+
+  it('虎牙房间忽略斗鱼登录态参数', async () => {
+    state.routes.set('https://www.huya.com/800001', () => html(huyaPage({ on: false, profileRoom: 800001, cdns: [] })));
+    const info = await resolveLiveRoom('https://www.huya.com/800001', { douyu: { cookie: 'acf_uid=1', uid: '1' } });
+    expect(info.loggedIn).toBeUndefined();
+  });
+});
+
 describe('通用', () => {
   it('非直播间地址 → 400', async () => {
     await expect(resolveLiveRoom('https://example.com/list.m3u')).rejects.toMatchObject({ status: 400 });

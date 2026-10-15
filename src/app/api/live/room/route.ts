@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { guardRequest, jsonError } from '@/lib/api-guard';
-import { LiveRoomError, resolveLiveRoom } from '@/lib/live-room-resolve';
+import { credentialUsable, readDouyuCredential } from '@/lib/douyu-credential';
+import { liveRoomPlatformOf } from '@/lib/live-room';
+import { LiveRoomError, resolveLiveRoom, type DouyuAuthContext } from '@/lib/live-room-resolve';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,6 +11,7 @@ export const dynamic = 'force-dynamic';
  * 平台直播间解析：GET /api/live/room?url=<斗鱼 / 虎牙直播间地址>&force=1
  * 返回主播、标题、开播状态与候选流地址（LiveRoomInfo）。
  * 只算地址不转流：媒体由浏览器直连平台 CDN。force=1 跳过 60s 缓存，供播放器在流地址失效时重取。
+ * 斗鱼房间带上本浏览器的登录态（加密 httpOnly cookie，见 douyu-credential）；确凿过期的凭证不发，退回匿名。
  */
 export async function GET(req: Request) {
   const guarded = guardRequest(req);
@@ -18,8 +21,16 @@ export async function GET(req: Request) {
   const url = sp.get('url')?.trim();
   if (!url) return jsonError('缺少 url 参数', 400);
 
+  let douyu: DouyuAuthContext | undefined;
+  if (liveRoomPlatformOf(url) === 'douyu') {
+    const credential = readDouyuCredential(req);
+    if (credential && credentialUsable(credential, Date.now())) {
+      douyu = { cookie: credential.cookie, uid: credential.uid };
+    }
+  }
+
   try {
-    const info = await resolveLiveRoom(url, { force: sp.get('force') === '1' });
+    const info = await resolveLiveRoom(url, { force: sp.get('force') === '1', douyu });
     return NextResponse.json(info, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
     if (err instanceof LiveRoomError) return jsonError(err.message, err.status);

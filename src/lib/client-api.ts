@@ -1,6 +1,6 @@
 'use client';
 
-import type { SearchResponse, SearchStreamEvent, SourceSearchOutcome, VideoDetail, DoubanResponse, BangumiCalendarResponse, AuthStatusResponse, SourceConfig, SearchResultItem, LivePlaylistResponse, LiveEpgResponse, LiveRoomInfo, SourceListPayload, DanmakuResponse } from './types';
+import type { SearchResponse, SearchStreamEvent, SourceSearchOutcome, VideoDetail, DoubanResponse, BangumiCalendarResponse, AuthStatusResponse, SourceConfig, SearchResultItem, LivePlaylistResponse, LiveEpgResponse, LiveRoomInfo, SourceListPayload, DanmakuResponse, DouyuSessionStatus, DouyuQrCreateResponse, DouyuQrPollResponse } from './types';
 
 /**
  * 客户端 API 封装。401 时触发全局事件打开登录框，
@@ -252,6 +252,21 @@ export const api = {
     if (force) sp.set('force', '1');
     return request<LiveRoomInfo>(`/api/live/room?${sp.toString()}`, { signal });
   },
+
+  /** —— 斗鱼账号（扫码登录 + 自动续期；凭证在加密 httpOnly cookie 里，前端只拿摘要） —— */
+
+  douyuSession: () => request<DouyuSessionStatus>('/api/live/douyu/session'),
+
+  /** 到点续期（是否到期由服务端判断，没到期直接返回摘要）；force 立即换票 */
+  douyuRenew: (force = false) =>
+    request<DouyuSessionStatus>(`/api/live/douyu/session${force ? '?force=1' : ''}`, { method: 'POST' }),
+
+  douyuLogout: () => request<DouyuSessionStatus>('/api/live/douyu/session', { method: 'DELETE' }),
+
+  douyuQrCreate: () => request<DouyuQrCreateResponse>('/api/live/douyu/qr', { method: 'POST' }),
+
+  douyuQrPoll: (code: string, signal?: AbortSignal) =>
+    request<DouyuQrPollResponse>(`/api/live/douyu/qr?code=${encodeURIComponent(code)}`, { signal }),
 
   /** 查询某频道的节目单（服务端缓存 6h） */
   liveEpg: (epgUrl: string, tvgId: string, force = false, signal?: AbortSignal) => {
