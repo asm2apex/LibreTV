@@ -29,6 +29,21 @@ function hmac(payload: string): string {
   return crypto.createHmac('sha256', getSecret()).update(payload).digest('hex');
 }
 
+/** 由站点密钥派生用途独立的 32 字节密钥（如直播间登录凭证的加密），用途串不同密钥即不同 */
+export function deriveKey(purpose: string): Buffer {
+  return crypto.createHash('sha256').update(`${getSecret()}:libretv::${purpose}`).digest();
+}
+
+/**
+ * Cookie 的 Secure 策略：COOKIE_SECURE 环境变量显式覆盖，否则按 x-forwarded-proto 推导。
+ * 不能依赖 req.url：Route Handler 里它是内部转发地址，不是用户侧的原始协议。
+ */
+export function cookieSecure(req: Request): boolean {
+  if (process.env.COOKIE_SECURE === 'true') return true;
+  if (process.env.COOKIE_SECURE === 'false') return false;
+  return (req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() ?? 'http') === 'https';
+}
+
 /** 生成签名会话 token：`<expiresAtMs>.<hmac>` */
 export function signSession(): { token: string; expiresAt: number } {
   const expiresAt = Date.now() + SESSION_TTL_MS;

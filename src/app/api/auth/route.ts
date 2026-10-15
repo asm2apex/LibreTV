@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { SESSION_COOKIE, checkRateLimit, sessionFromCookieHeader, signSession, checkPassword, clearRateLimit, isPasswordConfigured } from '@/lib/auth';
+import { SESSION_COOKIE, checkRateLimit, cookieSecure, sessionFromCookieHeader, signSession, checkPassword, clearRateLimit, isPasswordConfigured } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -34,17 +34,10 @@ export async function POST(req: Request) {
   clearRateLimit(ip);
   const { token, expiresAt } = signSession();
   const res = NextResponse.json({ success: true });
-  // Cookie Secure 策略：COOKIE_SECURE 环境变量显式覆盖；否则按 x-forwarded-proto 推导。
-  // 不能依赖 req.url——Next.js Route Handler 中它是内部转发地址，并非用户侧的原始协议。
-  const secure = process.env.COOKIE_SECURE === 'true'
-    ? true
-    : process.env.COOKIE_SECURE === 'false'
-      ? false
-      : (req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() ?? 'http') === 'https';
   res.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure,
+    secure: cookieSecure(req),
     maxAge: Math.floor((expiresAt - Date.now()) / 1000),
     path: '/',
   });

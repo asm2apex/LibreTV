@@ -191,6 +191,48 @@ export interface LiveRoomInfo {
   living: boolean;
   /** 开播时的候选流，按推荐顺序排列，播放器依次尝试；未开播为空数组 */
   streams: LiveRoomStream[];
+  /** 平台给出的画质档名（如 蓝光8M / 高清），仅斗鱼取流时有 */
+  quality?: string;
+  /** 本次取流是否带了登录态（斗鱼：登录后才有蓝光 / 原画且匿名流不再 5 分钟一断） */
+  loggedIn?: boolean;
+}
+
+// —— 斗鱼账号（扫码登录 + 自动续期） ——
+
+/** 登录态摘要（/api/live/douyu/session）：只有非敏感字段，凭证原文永不下发 */
+export interface DouyuSessionStatus {
+  loggedIn: boolean;
+  nickname?: string;
+  uid?: string;
+  /** 上次拿到新鲜登录态的时间 */
+  issuedAt?: number;
+  /** 下次续期时间（含失败退避） */
+  nextRenewAt?: number;
+  /** 续期已判定凭证失效，需重新扫码 */
+  needRescan?: boolean;
+  /** 主站 cookie 已确凿过期（续期一直没成功），取流已退回匿名 */
+  expired?: boolean;
+  /** 是否持有长期凭证（扫码时没拿到 LTP0 的话到期只能重扫） */
+  canRenew?: boolean;
+  /** 本次 POST 是否真的换了票（未到期跳过时为 false） */
+  renewed?: boolean;
+  /** 本次续期失败的原因（临时失败或凭证失效） */
+  renewError?: string;
+}
+
+export interface DouyuQrCreateResponse {
+  code: string;
+  /** 有效期（秒） */
+  expire: number;
+  /** 二维码 SVG（服务端生成，内联展示） */
+  svg: string;
+}
+
+export interface DouyuQrPollResponse {
+  state: 'waiting' | 'scanned' | 'success' | 'expired' | 'rejected';
+  msg?: string;
+  nickname?: string;
+  uid?: string;
 }
 
 // —— 数据源订阅 ——
