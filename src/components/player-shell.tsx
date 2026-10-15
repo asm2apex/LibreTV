@@ -223,15 +223,19 @@ export function PlayerShell({
           break;
         }
         case 'switch-source': {
-          // 覆盖播放开始后的场景：起播失败走 setError 遮罩；
-          // 播放中失败走回调弹换源面板（父级未提供回调时同样 setError）
+          // 换源决策意味着 hls 已停止加载、不会再自愈。无论起播前后都必须留下
+          // 可操作的错误遮罩：此前播放中失败只闪 2.5s 的 hint，用户关掉换源面板后
+          // 画面就静默卡死，既看不到原因也没有出口。
           const message = `${describeHlsError(data.type, data.details)}：${decision.reason}`;
-          if (playbackStartedRef.current) {
-            showHint(message);
-            propsRef.current.onRequestSwitchSource?.(decision.reason);
-          } else {
-            setError(`视频加载失败，${message}，请尝试其他视频源`);
-          }
+          const started = playbackStartedRef.current;
+          setError(
+            started
+              ? `播放中断，${message}，请切换资源或重新加载`
+              : `视频加载失败，${message}，请尝试其他视频源`
+          );
+          // 播放中失败额外主动拉起换源面板（由父级提供）；起播失败时用户还在
+          // 选片阶段，遮罩加顶栏「切换资源」已够，不打断
+          if (started) propsRef.current.onRequestSwitchSource?.(decision.reason);
           break;
         }
       }

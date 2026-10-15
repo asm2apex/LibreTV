@@ -248,6 +248,8 @@ function WatchContent() {
                   onTimeUpdate={handleProgress}
                   onPause={handleProgress}
                   onEnded={handleEnded}
+                  // 播放中源失效（重试耗尽 / 格式硬失败）：直接拉起换源面板，与顶栏「切换资源」同一入口
+                  onRequestSwitchSource={() => setSwitchOpen(true)}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
