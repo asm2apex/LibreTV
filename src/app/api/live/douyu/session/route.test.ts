@@ -17,13 +17,13 @@ const LOGIN = { cookie: 'acf_auth=OLD; acf_uid=42; dy_did=dev1', ltp0: 'LONG', d
 
 function makeRequest(method: 'GET' | 'POST' | 'DELETE', credential?: DouyuCredential, query = ''): Request {
   const cookies = [`${SESSION_COOKIE}=${signSession().token}`];
-  if (credential) cookies.push(`ltv_douyu=${encryptCredential(credential)}`);
+  if (credential) cookies.push(`ftv_douyu=${encryptCredential(credential)}`);
   return new Request(`https://local.test/api/live/douyu/session${query}`, { method, headers: { cookie: cookies.join('; ') } });
 }
 
 function cookieFromResponse(res: Response): DouyuCredential | null {
   const header = res.headers.get('set-cookie') ?? '';
-  const m = header.match(/ltv_douyu=([^;]*)/);
+  const m = header.match(/ftv_douyu=([^;]*)/);
   return m ? decryptCredential(m[1]) : null;
 }
 
@@ -90,7 +90,7 @@ describe('/api/live/douyu/session', () => {
     const res = await DELETE(makeRequest('DELETE', credentialFromScan(LOGIN, Date.now())));
     expect(await res.json()).toEqual({ loggedIn: false });
     const setCookie = res.headers.get('set-cookie') ?? '';
-    expect(setCookie).toMatch(/^ltv_douyu=;/);
+    expect(setCookie).toMatch(/^ftv_douyu=;/);
     expect(setCookie).toMatch(/Max-Age=0/);
   });
 

@@ -7,7 +7,7 @@
 import type { StateStorage } from 'zustand/middleware';
 
 /** store 持久化在 localStorage 中的键（store.ts 的 persist name 与 importConfig 共用） */
-export const PERSIST_KEY = 'libretv-settings';
+export const PERSIST_KEY = 'freetv-settings';
 
 /** 节流窗口：搜索/测活等高频 set 合并为 800ms 一次落盘 */
 const THROTTLE_MS = 800;

@@ -9,7 +9,7 @@ import crypto from 'node:crypto';
  * - 登录接口只接受 POST body，不再把明文密码放 query。
  */
 
-export const SESSION_COOKIE = 'ltv_session';
+export const SESSION_COOKIE = 'ftv_session';
 const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 天
 
 export function getPassword(): string {
@@ -22,6 +22,7 @@ export function isPasswordConfigured(): boolean {
 
 function getSecret(): string {
   if (process.env.PROXY_SECRET) return process.env.PROXY_SECRET;
+  // 盐值是不可见的派生常量，改名时特意保留原串：换掉会让所有会话与已存的斗鱼登录凭证一起失效
   return crypto.createHash('sha256').update(getPassword() + ':libretv::session-salt').digest('hex');
 }
 

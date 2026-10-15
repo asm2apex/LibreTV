@@ -10,6 +10,7 @@ import { DouyuLoginKeeper } from './douyu-account';
 import { useAppStore, hydrateLiveProbeResults } from '@/lib/store';
 import { api, STATUS_QUERY_KEY } from '@/lib/client-api';
 import { applyEnvPresets } from '@/lib/subscription-sync';
+import { migrateLegacyBrowserStores, migrateLegacyLocalStorage } from '@/lib/legacy-migration';
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -21,12 +22,20 @@ export function Providers({ children }: { children: ReactNode }) {
       })
   );
 
+  // 改名前的 localStorage 键先搬到新键：lazy initializer 在首次渲染时执行，
+  // 早于 ThemeProvider 等子组件读取主题 / 设置的 effect（子组件 effect 先于本组件 effect 运行）
+  useState(() => {
+    migrateLegacyLocalStorage();
+    return null;
+  });
+
   // store 配置了 skipHydration：等挂载后再读 localStorage，
   // 保证 hydration 阶段客户端与服务端渲染结果一致。
   useEffect(() => {
-    // 先等持久化状态恢复，再拉服务端下发数据：
+    // 顺序：搬完改名前的 IndexedDB / Cache Storage → 恢复持久化状态 → 拉服务端下发数据，
     // 避免 setEnvSources/setLiveEnvSources 的勾选合并发生在 rehydrate 之前被覆盖
-    Promise.resolve(useAppStore.persist.rehydrate())
+    migrateLegacyBrowserStores()
+      .then(() => useAppStore.persist.rehydrate())
       .then(() => {
         // 测活缓存从 IndexedDB 恢复（并顺带搬迁旧 localStorage 快照里的存量），
         // 与下方 /api/status 拉取互不依赖，失败静默

@@ -4,7 +4,7 @@ import { StreamingTransmuxer } from './mp4-transmuxer';
 /**
  * 整集离线下载：
  * - 分片并发下载（默认 8），单分片 3 次重试，已下载分片写入 Cache Storage
- *   （`libretv-dl-v1` 桶）实现网络层断点——中断后续传不再耗流量；
+ *   （`freetv-dl-v1` 桶）实现网络层断点——中断后续传不再耗流量；
  * - AES-128 解密用 WebCrypto AES-CBC（HLS 标准），不引入 CryptoJS；
  * - 输出：TS 直接顺序拼接；MP4 经 mux.js 流式转封装（边下边写，不聚整集）；
  * - 保存目标（FS Access / 内存）由调用方在用户手势内选好传入，本模块只管写。
@@ -14,7 +14,7 @@ import { StreamingTransmuxer } from './mp4-transmuxer';
  * 但需要用户重新选择保存位置。
  */
 
-const DL_CACHE_NAME = 'libretv-dl-v1';
+const DL_CACHE_NAME = 'freetv-dl-v1';
 const SEGMENT_TIMEOUT_MS = 20_000;
 const MAX_SEGMENT_RETRIES = 3;
 
@@ -56,11 +56,11 @@ export interface DownloadProgress {
 
 /**
  * 分片缓存 key。Cache Storage 的 put/match 只接受 http(s) scheme——
- * 自定义字符串（如 `libretv-dl-v1:dl:...`）会被 URL 解析成同名自定义协议，
+ * 自定义字符串（如 `freetv-dl-v1:dl:...`）会被 URL 解析成同名自定义协议，
  * put 直接抛 "Request scheme ... is unsupported"。因此用一段不会被真实
  * 请求的保留域名构造合法 URL，仅作缓存 key 使用；taskId 经编码避免歧义。
  */
-const DL_CHUNK_ORIGIN = 'https://dl.libretv.local';
+const DL_CHUNK_ORIGIN = 'https://dl.freetv.local';
 
 function dlChunkKey(taskId: string, index: number): string {
   return `${DL_CHUNK_ORIGIN}/${encodeURIComponent(taskId)}/${index}`;

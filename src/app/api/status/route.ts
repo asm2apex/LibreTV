@@ -16,8 +16,8 @@ export async function GET(req: Request) {
   return NextResponse.json({
     passwordRequired,
     verified,
-    // 构建时由 next.config.ts 从 package.json 注入
-    version: process.env.APP_VERSION || 'dev',
+    // 构建时由 next.config.ts 从 package.json 注入；未登录不下发，版本号是探测引擎最爱的特征之一
+    version: verified ? process.env.APP_VERSION || 'dev' : '',
     // 部署者通过 DEFAULT_SOURCES 预置的采集站
     defaultSources: getEnvSources(),
     // 部署者通过 DEFAULT_LIVE_SOURCES 预置的直播源（M3U 订阅）

@@ -1,8 +1,8 @@
 {
-  "name": "libretv",
+  "name": "freetv",
   "version": "2.16.12",
   "private": true,
-  "description": "免费在线视频搜索与观看平台（Next.js 重构版）",
+  "description": "FreeTV 影视聚合搜索与播放",
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "dev": "next dev -p 8080",

@@ -76,12 +76,12 @@ describe('GET /api/live/douyu/qr', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ state: 'success', nickname: '小明', uid: '42' });
     const setCookie = res.headers.get('set-cookie') ?? '';
-    expect(setCookie).toMatch(/^ltv_douyu=/);
+    expect(setCookie).toMatch(/^ftv_douyu=/);
     expect(setCookie).toContain('HttpOnly');
     expect(setCookie).toContain('Path=/api/live');
     expect(setCookie).not.toContain('SECRET');
     expect(setCookie).not.toContain('LONG');
-    const token = setCookie.split(';')[0].slice('ltv_douyu='.length);
+    const token = setCookie.split(';')[0].slice('ftv_douyu='.length);
     const credential = decryptCredential(token);
     expect(credential).toMatchObject({ cookie: 'acf_auth=SECRET; acf_uid=42', ltp0: 'LONG', dyDid: 'dev', uid: '42', nickname: '小明', needRescan: false });
     expect(credential!.nextRenewAt - credential!.issuedAt).toBe(3 * 24 * 60 * 60 * 1000);

@@ -8,7 +8,13 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
  */
 
 export type ThemeChoice = 'light' | 'dark' | 'system';
-const STORAGE_KEY = 'libretv-theme';
+const STORAGE_KEY = 'freetv-theme';
+/** 改名前的键：迁移完成前先退回读取，避免首次打开主题跳变 */
+const LEGACY_STORAGE_KEY = 'libretv-theme';
+
+function readStoredTheme(): ThemeChoice {
+  return ((localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY)) as ThemeChoice | null) || 'dark';
+}
 
 interface ThemeContextValue {
   theme: ThemeChoice;
@@ -41,13 +47,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [resolved, setResolved] = useState<'light' | 'dark'>('dark');
 
   useEffect(() => {
-    const stored = (localStorage.getItem(STORAGE_KEY) as ThemeChoice | null) || 'dark';
+    const stored = readStoredTheme();
     setThemeState(stored);
     setResolved(apply(stored));
 
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const onChange = () => {
-      const current = (localStorage.getItem(STORAGE_KEY) as ThemeChoice | null) || 'dark';
+      const current = readStoredTheme();
       if (current === 'system') {
         setResolved(apply('system'));
       }

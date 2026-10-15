@@ -44,11 +44,11 @@ describe('加解密', () => {
     expect(decryptCredential(token)).toBeNull();
   });
 
-  it('从请求 Cookie 头里取 ltv_douyu（其它 cookie 忽略）', () => {
+  it('从请求 Cookie 头里取 ftv_douyu（其它 cookie 忽略）', () => {
     const token = encryptCredential(credentialFromScan(LOGIN, now));
-    const req = new Request('https://local.test/api/live/room', { headers: { cookie: `ltv_session=abc; ltv_douyu=${token}; other=1` } });
+    const req = new Request('https://local.test/api/live/room', { headers: { cookie: `ftv_session=abc; ftv_douyu=${token}; other=1` } });
     expect(readDouyuCredential(req)?.uid).toBe('42');
-    expect(readDouyuCredential(new Request('https://local.test/', { headers: { cookie: 'ltv_session=abc' } }))).toBeNull();
+    expect(readDouyuCredential(new Request('https://local.test/', { headers: { cookie: 'ftv_session=abc' } }))).toBeNull();
     expect(readDouyuCredential(new Request('https://local.test/'))).toBeNull();
   });
 });

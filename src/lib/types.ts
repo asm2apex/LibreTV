@@ -253,7 +253,7 @@ export type SubscriptionSkipReason =
 /** 订阅解析统计：说明跳过与截断情况，用于导入结果提示 */
 export interface SubscriptionParseStats {
   /** 识别出的订阅格式 */
-  format: 'libretv' | 'tvbox';
+  format: 'freetv' | 'tvbox';
   /** 被跳过的条目总数 */
   skipped: number;
   /** 跳过原因分类计数 */
@@ -267,7 +267,7 @@ export interface SubscriptionParseStats {
 /**
  * 远程订阅解析结果。
  * `sources` 为点播源（Apple CMS 采集站），`liveSources` 为直播源（M3U + 可选 EPG）。
- * 兼容两种订阅格式：LibreTV-SourceList JSON 与 TVBOX 配置 JSON（`sites` / `lives`）。
+ * 兼容两种订阅格式：FreeTV-SourceList JSON 与 TVBOX 配置 JSON（`sites` / `lives`）。
  * 老格式订阅只有 `sources`，此时 `liveSources` 为空数组。
  */
 export interface SourceListPayload {

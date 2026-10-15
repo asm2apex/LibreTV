@@ -37,7 +37,7 @@ export interface SubscriptionSyncCounts {
 }
 
 /**
- * 数据源订阅：远程源列表（LibreTV-SourceList JSON 或 TVBOX 配置 JSON，由服务端自动识别），可一键同步更新。
+ * 数据源订阅：远程源列表（FreeTV-SourceList JSON 或 TVBOX 配置 JSON，由服务端自动识别），可一键同步更新。
  * 一份订阅同时下发点播源与直播源；老订阅只有点播源。订阅内容一律归一化为本站源结构，故存储层与格式无关。
  */
 export interface SourceSubscription {

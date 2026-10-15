@@ -10,7 +10,7 @@ function readApiTemplate(envName: string): string | undefined {
   const raw = process.env[envName]?.trim();
   if (!raw) return undefined;
   if (!/^https?:\/\//i.test(raw)) {
-    console.warn(`[LibreTV] ${envName} 取值无效，已忽略（需为 http(s) 地址模板）`);
+    console.warn(`[FreeTV] ${envName} 取值无效，已忽略（需为 http(s) 地址模板）`);
     return undefined;
   }
   return raw;

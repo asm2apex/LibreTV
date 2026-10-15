@@ -28,7 +28,7 @@ export function getEnvSubscriptions(): EnvSubscription[] {
     });
     return list;
   } catch (err) {
-    console.warn('[LibreTV] DEFAULT_SUBSCRIPTIONS 解析失败，已忽略：', err instanceof Error ? err.message : err);
+    console.warn('[FreeTV] DEFAULT_SUBSCRIPTIONS 解析失败，已忽略：', err instanceof Error ? err.message : err);
     return [];
   }
 }

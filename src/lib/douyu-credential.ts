@@ -16,7 +16,7 @@ import {
 import type { DouyuSessionStatus } from './types';
 
 /**
- * 斗鱼登录凭证的存放：加密后放在本站的 httpOnly cookie（ltv_douyu，path 限定 /api/live）。
+ * 斗鱼登录凭证的存放：加密后放在本站的 httpOnly cookie（ftv_douyu，path 限定 /api/live）。
  * - 每个浏览器各自登录自己的账号，服务端无状态（Vercel 等平台也不需要存储）；
  * - httpOnly：页面脚本碰不到 acf_* 与 LTP0，XSS 拿不走账号；
  * - AES-256-GCM，密钥由站点密钥派生：cookie 离开本站部署就是一串废字节，被改过一个字节即整体作废；
@@ -24,7 +24,7 @@ import type { DouyuSessionStatus } from './types';
  * 凭证原文永远不出现在 JSON 响应里，前端只拿得到 sessionStatus 的非敏感摘要。
  */
 
-export const DOUYU_COOKIE = 'ltv_douyu';
+export const DOUYU_COOKIE = 'ftv_douyu';
 export const DOUYU_COOKIE_PATH = '/api/live';
 /** cookie 本身的保存期：LTP0 数月有效，续期会不断重写 */
 const COOKIE_MAX_AGE_S = 180 * 24 * 60 * 60;

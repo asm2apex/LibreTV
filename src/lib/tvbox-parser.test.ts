@@ -23,7 +23,7 @@ describe('isTvboxPayload', () => {
     expect(isTvboxPayload({ lives: [] })).toBe(true);
   });
 
-  it('LibreTV 订阅与非法输入不误判', () => {
+  it('FreeTV 订阅与非法输入不误判', () => {
     expect(isTvboxPayload({ sources: [], liveSources: [] })).toBe(false);
     expect(isTvboxPayload([{ url: 'https://a.example.com/vod' }])).toBe(false);
     expect(isTvboxPayload(null)).toBe(false);
@@ -187,7 +187,7 @@ describe('parseSubscriptionPayload', () => {
     expect(result.liveSources).toHaveLength(1);
   });
 
-  it('LibreTV 订阅仍按原逻辑解析并带默认统计', () => {
+  it('FreeTV 订阅仍按原逻辑解析并带默认统计', () => {
     const result = parseSubscriptionPayload({
       name: '我的源列表',
       sources: [{ name: '点播', url: 'https://a.example.com/api.php/provide/vod' }],
@@ -197,13 +197,13 @@ describe('parseSubscriptionPayload', () => {
     expect(result.name).toBe('我的源列表');
     expect(result.sources).toHaveLength(1);
     expect(result.liveSources).toHaveLength(1);
-    expect(result.stats).toEqual({ format: 'libretv', skipped: 0, skippedByReason: {}, truncated: 0 });
+    expect(result.stats).toEqual({ format: 'freetv', skipped: 0, skippedByReason: {}, truncated: 0 });
   });
 
-  it('裸数组老格式仍按 LibreTV 解析', () => {
+  it('裸数组老格式仍按 FreeTV 解析', () => {
     const result = parseSubscriptionPayload([{ url: 'https://a.example.com/api.php/provide/vod' }]);
     expect(result.sources).toHaveLength(1);
-    expect(result.stats?.format).toBe('libretv');
+    expect(result.stats?.format).toBe('freetv');
   });
 
   it('两种格式都不匹配时抛格式错误', () => {
@@ -215,7 +215,7 @@ describe('parseSubscriptionPayload', () => {
 describe('describeParseStats / withSkipped', () => {
   it('无异常时返回空串，有跳过时给出原因与示例', () => {
     expect(describeParseStats(undefined)).toBe('');
-    expect(describeParseStats({ format: 'libretv', skipped: 0, skippedByReason: {}, truncated: 0 })).toBe('');
+    expect(describeParseStats({ format: 'freetv', skipped: 0, skippedByReason: {}, truncated: 0 })).toBe('');
 
     const stats = {
       format: 'tvbox' as const,
@@ -235,7 +235,7 @@ describe('describeParseStats / withSkipped', () => {
 
     expect(merged).toEqual({ format: 'tvbox', skipped: 3, skippedByReason: { spider: 1, invalidUrl: 2 }, truncated: 0 });
     expect(base.skipped).toBe(1);
-    expect(withSkipped(undefined, 'invalidUrl', 0)).toEqual({ format: 'libretv', skipped: 0, skippedByReason: {}, truncated: 0 });
+    expect(withSkipped(undefined, 'invalidUrl', 0)).toEqual({ format: 'freetv', skipped: 0, skippedByReason: {}, truncated: 0 });
   });
 });
 
