@@ -12,6 +12,7 @@ import { Spinner } from './states';
  * - 无扩展名的地址（如 /channel/xxx?token=...）默认按 HLS 处理，
  *   HLS 直连与代理均失败后**回退原生播放**一次（覆盖"内容是 MP4 却无 .m3u8 后缀"的源）；
  * - 每级直连失败自动切换到 /api/live/stream 代理通道重试一次；
+ * - 致命错误经 onFatalError 上报、「重新加载」经 onReload 上报：平台直播间播放器据此换候选流 / 重新解析；
  * - 直播态 UI：无进度条、无倍速、无截图、无连播。
  */
 
@@ -46,9 +47,13 @@ interface LivePlayerProps {
   /** 上一台/下一台：传入时注册为播放器控制条按钮（全屏内也可操作） */
   onPrevChannel?: () => void;
   onNextChannel?: () => void;
+  /** 致命错误（起播失败 / 中断且重试耗尽）：直播间播放器据此切下一路候选流或重新解析 */
+  onFatalError?: (message: string) => void;
+  /** 用户点「重新加载」：直播间播放器借此强制重新解析（旧流地址多半已过期） */
+  onReload?: () => void;
 }
 
-export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePlayerProps) {
+export function LivePlayer({ url, title, onPrevChannel, onNextChannel, onFatalError, onReload }: LivePlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const artRef = useRef<any>(null);
@@ -66,6 +71,11 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
   const [osdTitle, setOsdTitle] = useState('');
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 回调经 ref 读取：父组件每次渲染产生的新闭包不应触发播放器重建
+  const onFatalErrorRef = useRef(onFatalError);
+  onFatalErrorRef.current = onFatalError;
+  const onReloadRef = useRef(onReload);
+  onReloadRef.current = onReload;
 
   // url 变化即换台：显示频道名 2.5s
   useEffect(() => {
@@ -93,6 +103,14 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
     let playbackStarted = false;
     let disposed = false;
     let destroyed = false;
+    // 一次重建周期内只上报一次致命错误：loader 结束、video error 等信号会接连触发
+    let failed = false;
+    const failOnce = (message: string) => {
+      if (failed) return;
+      failed = true;
+      setError(message);
+      onFatalErrorRef.current?.(message);
+    };
     /** 原生播放注册的 error 监听清理函数（切台/销毁时调用） */
     let nativeCleanup: (() => void) | null = null;
 
@@ -131,7 +149,7 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
           setupNative(video, proxyUrl(url), false, failMessage);
           return;
         }
-        setError(failMessage || '该地址不是可播放的直播流（内容可能是文件或错误提示）');
+        failOnce(failMessage || '该地址不是可播放的直播流（内容可能是文件或错误提示）');
       };
       video.addEventListener('error', onError);
       nativeCleanup = () => video.removeEventListener('error', onError);
@@ -185,7 +203,7 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
             hls.recoverMediaError();
             return;
           }
-          setError('直播流解码失败，可能该频道编码不受当前浏览器支持，请尝试其他频道');
+          failOnce('直播流解码失败，可能该频道编码不受当前浏览器支持，请尝试其他频道');
           return;
         }
         if (!playbackStarted) {
@@ -208,7 +226,7 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
           // 播放中网络抖动：尝试恢复拉流；连续失败达到阈值则报错退出
           liveNetRetryCount++;
           if (liveNetRetryCount > 5) {
-            setError(`直播流中断${codeHint}，该源可能已失效，请尝试其他频道`);
+            failOnce(`直播流中断${codeHint}，该源可能已失效，请尝试其他频道`);
             return;
           }
           hls.startLoad();
@@ -227,12 +245,12 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
       try {
         Mpegts = (await import('mpegts.js')).default;
       } catch {
-        setError('FLV 播放模块加载失败，请检查网络后重试');
+        failOnce('FLV 播放模块加载失败，请检查网络后重试');
         return;
       }
       if (disposed || destroyed) return;
       if (!Mpegts.getFeatureList().mseLivePlayback) {
-        setError('当前浏览器不支持 FLV 直播播放');
+        failOnce('当前浏览器不支持 FLV 直播播放');
         return;
       }
       const player = Mpegts.createPlayer(
@@ -259,7 +277,13 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
           void setupFlv(video, proxyUrl(url), false);
           return;
         }
-        setError(`直播流加载失败（${errType}），请尝试其他频道`);
+        failOnce(`直播流加载失败（${errType}），请尝试其他频道`);
+      });
+      // 上游主动断流（如斗鱼对匿名 FLV 约每 5 分钟切断一次）：loader 正常结束但直播没完，
+      // 按中断处理——直播间播放器会重新解析续播，普通频道停在错误层由用户重载
+      player.on(Mpegts.Events.LOADING_COMPLETE, () => {
+        if (disposed || destroyed || !playbackStarted) return;
+        failOnce('直播流已中断，请重新加载');
       });
       player.play().catch(() => {});
     };
@@ -355,7 +379,7 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
     // 15s 内未起播则提示
     const startTimer = setTimeout(() => {
       if (!playbackStarted && !disposed && !destroyed) {
-        setError('频道加载超时，可能该源已失效，请尝试其他频道');
+        failOnce('频道加载超时，可能该源已失效，请尝试其他频道');
       }
     }, 15000);
 
@@ -410,10 +434,11 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
           <button
             className="btn-ghost text-xs !bg-white/10 !text-white !border-white/20"
             onClick={() => {
-              // 重建播放器实例即可，无需整页刷新
+              // 重建播放器实例即可，无需整页刷新；直播间播放器借此强制重新解析（流地址可能已过期）
               setError('');
               setHint('');
               setRetryNonce((n) => n + 1);
+              onReloadRef.current?.();
             }}
           >
             重新加载

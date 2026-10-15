@@ -16,7 +16,17 @@ const LivePlayer = dynamic(() => import('@/components/live-player').then((m) => 
     </div>
   ),
 });
+const LiveRoomPlayer = dynamic(() => import('@/components/live-room-player').then((m) => m.LiveRoomPlayer), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-black">
+      <Spinner size="lg" />
+    </div>
+  ),
+});
 import { LiveChannelList, type LiveChannelItem } from '@/components/live-channel-list';
+import { useLiveRoom } from '@/components/use-live-room';
+import { isLiveRoomUrl } from '@/lib/live-room';
 import { LiveEpgPanel } from '@/components/live-epg-panel';
 import { Spinner } from '@/components/states';
 import { useAuth } from '@/components/auth';
@@ -100,6 +110,10 @@ function LiveContent() {
 
   // 当前频道：优先取列表内完整对象（含台标），否则由 URL 参数重建
   const currentUrl = searchParams.get('url') || '';
+  // 平台直播间（斗鱼 / 虎牙）：播放前要先解析；信息条与播放器共用同一查询
+  const isRoom = isLiveRoomUrl(currentUrl);
+  const roomQuery = useLiveRoom(isRoom ? currentUrl : undefined);
+  const room = roomQuery.data;
   const currentChannel = useMemo(() => {
     const found = channels.find((c) => c.url === currentUrl);
     if (found) return found;
@@ -214,7 +228,8 @@ function LiveContent() {
     );
   }
 
-  const logo = currentChannel?.logo;
+  // 直播间频道的台标是主播头像：深链进来没有列表数据时用解析结果补上
+  const logo = currentChannel?.logo || room?.avatar;
   const isFavorite = currentChannel ? liveFavorites.includes(currentChannel.url) : false;
 
   return (
@@ -226,12 +241,21 @@ function LiveContent() {
           <div className="min-w-0">
             <div className="aspect-video bg-black rounded-lg overflow-hidden">
               {currentUrl ? (
-                <LivePlayer
-                  url={currentUrl}
-                  title={currentChannel?.name || '直播'}
-                  onPrevChannel={goPrevChannel}
-                  onNextChannel={goNextChannel}
-                />
+                isRoom ? (
+                  <LiveRoomPlayer
+                    roomUrl={currentUrl}
+                    title={currentChannel?.name || '直播'}
+                    onPrevChannel={goPrevChannel}
+                    onNextChannel={goNextChannel}
+                  />
+                ) : (
+                  <LivePlayer
+                    url={currentUrl}
+                    title={currentChannel?.name || '直播'}
+                    onPrevChannel={goPrevChannel}
+                    onNextChannel={goNextChannel}
+                  />
+                )
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-black">
                   <span className="live-dot" />
@@ -239,7 +263,7 @@ function LiveContent() {
                     {sources.length === 0
                       ? liveEnvSources.length + liveSubscriptions.length > 0
                         ? '所有直播源均已停用，请在设置中勾选启用'
-                        : '请先在设置中添加直播源（M3U 订阅）'
+                        : '请先在设置中添加直播源（M3U 订阅或斗鱼 / 虎牙直播间）'
                       : playlistsQuery.isLoading
                         ? '频道列表加载中...'
                         : '从右侧选择一个频道开始观看'}
@@ -272,8 +296,12 @@ function LiveContent() {
                     {currentChannel.group && (
                       <span className="tag bg-chip text-faint shrink-0">{currentChannel.group}</span>
                     )}
+                    {isRoom && room && !room.living && (
+                      <span className="tag bg-chip text-faint shrink-0">未开播</span>
+                    )}
                   </div>
-                  <p className="text-xs text-faint truncate mt-0.5">{currentChannel.url}</p>
+                  {/* 直播间显示房间标题（解析完成前先显示地址），普通频道显示流地址 */}
+                  <p className="text-xs text-faint truncate mt-0.5">{(isRoom && room?.title) || currentChannel.url}</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
@@ -378,8 +406,8 @@ function LiveContent() {
               </div>
             )}
 
-            {/* 节目单 */}
-            {currentChannel && (
+            {/* 节目单（平台直播间没有节目单概念，不显示） */}
+            {currentChannel && !isRoom && (
               <section className="bg-surface-raised border border-line rounded-lg p-3 mt-3">
                 <h2 className="text-sm font-semibold text-content mb-2.5">节目单</h2>
                 <LiveEpgPanel epgUrl={currentChannel.epg} tvgId={currentChannel.tvgId} />

@@ -8,9 +8,10 @@ import { formatRelativeTime, hostnameOf, validateSourceUrl, cn } from '@/lib/uti
 import { SearchInput, SectionTitle, TestBadge, useSourceTests } from './settings-shared';
 import { EmptyState } from './states';
 import { Icon } from './icon';
+import { LIVE_ROOM_PLATFORM_LABEL, isLiveRoomUrl, liveRoomPlatformOf } from '@/lib/live-room';
 
 /**
- * 直播源管理（嵌入设置抽屉）：M3U 订阅的添加 / 探活 / 移除 / 导出，
+ * 直播源管理（嵌入设置抽屉）：M3U 订阅与斗鱼 / 虎牙直播间的添加 / 探活 / 移除 / 导出，
  * 以及部署者预置源展示。工具条、徽章、空态与撤销语义与点播源面板保持一致。
  */
 
@@ -110,7 +111,7 @@ export function LiveSourceManager() {
     <section>
       <SectionTitle
         title="直播源"
-        hint={empty ? 'M3U 订阅 · /live 页面播放' : `共 ${store.liveEnvSources.length + store.liveSubscriptions.length} 个 · 已启用 ${store.liveSelectedUrls.length}`}
+        hint={empty ? 'M3U 订阅或斗鱼 / 虎牙直播间 · /live 页面播放' : `共 ${store.liveEnvSources.length + store.liveSubscriptions.length} 个 · 已启用 ${store.liveSelectedUrls.length}`}
         extra={
           <button className="btn-primary btn-sm" onClick={() => setAdding(true)}>
             <Icon name="plus" className="w-3.5 h-3.5" />
@@ -133,7 +134,14 @@ export function LiveSourceManager() {
             store.updateLiveSubscription(editing, { name: data.name, epg: data.epg });
           } else {
             store.addLiveSubscription(data.url, data.name, data.epg);
-            void runTest(data.url, () => api.liveTest(data.url));
+            void runTest(data.url, async () => {
+              const result = await api.liveTest(data.url);
+              // 未命名的源用播放列表名回填：直播间为「平台 · 主播」，M3U 为 #PLAYLIST（没有则保持地址）
+              if (result.ok && !data.name && result.name) {
+                useAppStore.getState().updateLiveSubscription(data.url, { name: result.name });
+              }
+              return result;
+            });
           }
           setAdding(false);
           setEditing(null);
@@ -144,7 +152,7 @@ export function LiveSourceManager() {
         <EmptyState
           icon="link"
           title="还没有添加任何直播源"
-          description="添加 M3U 地址后即可在「直播」页按分组浏览与播放频道；也可在「数据源订阅」中一次导入点播源与直播源；部署者还可通过 DEFAULT_LIVE_SOURCES 环境变量预置。"
+          description="添加 M3U 地址或斗鱼 / 虎牙直播间地址后即可在「直播」页浏览与播放；也可在「数据源订阅」中一次导入点播源与直播源；部署者还可通过 DEFAULT_LIVE_SOURCES 环境变量预置。"
           action={
             <button className="btn-primary btn-sm" onClick={() => setAdding(true)}>
               添加第一个直播源
@@ -183,6 +191,7 @@ export function LiveSourceManager() {
               {rows.map((row) => {
                 const enabled = store.liveSelectedUrls.includes(row.url);
                 const fromSubscription = row.fromSubscriptions.length > 0;
+                const platform = liveRoomPlatformOf(row.url);
                 return (
                   <li
                     key={row.url}
@@ -209,6 +218,11 @@ export function LiveSourceManager() {
                               部署者预置
                             </span>
                           )}
+                          {platform && (
+                            <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-chip text-faint align-middle">
+                              {LIVE_ROOM_PLATFORM_LABEL[platform]}直播间
+                            </span>
+                          )}
                           {fromSubscription && (
                             <span
                               className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent align-middle"
@@ -230,14 +244,17 @@ export function LiveSourceManager() {
                         title="拉取解析并测速（频道数量与耗时）"
                         badgeWhenOk={({ count }) => `✓ ${count ?? 0} 频道`}
                       />
-                      <button
-                        className="rounded-md p-2 text-muted transition-colors hover:bg-hover hover:text-accent shrink-0"
-                        onClick={() => exportM3u(row.url)}
-                        aria-label="导出 M3U"
-                        title="导出为标准 M3U 文件"
-                      >
-                        <Icon name="download" className="w-4 h-4" />
-                      </button>
+                      {/* 直播间导出的 M3U 只有房间页地址，外部播放器放不了，不提供 */}
+                      {!platform && (
+                        <button
+                          className="rounded-md p-2 text-muted transition-colors hover:bg-hover hover:text-accent shrink-0"
+                          onClick={() => exportM3u(row.url)}
+                          aria-label="导出 M3U"
+                          title="导出为标准 M3U 文件"
+                        >
+                          <Icon name="download" className="w-4 h-4" />
+                        </button>
+                      )}
                       {row.preset ? null : fromSubscription ? (
                         <>
                           {/* 订阅源由远端列表管理：编辑会被下次同步覆盖、删除会复活，故置为禁用态并指路 */}
@@ -290,7 +307,7 @@ export function LiveSourceManager() {
   );
 }
 
-/** 直播源表单：与点播源一致，由「+ 添加 / 编辑」按钮展开；编辑时地址只读、提交后自动探活（仅新增） */
+/** 直播源表单：与点播源一致，由「+ 添加 / 编辑」按钮展开；编辑时地址只读、提交后自动探活（仅新增）；直播间地址没有节目单项 */
 function LiveSourceForm({
   visible,
   initial,
@@ -318,25 +335,29 @@ function LiveSourceForm({
 
   if (!visible) return null;
 
+  // 平台直播间没有 EPG：不显示该项，也不把残留输入提交出去
+  const isRoom = isLiveRoomUrl(initial?.url ?? url);
+  const epgValue = isRoom ? undefined : epg.trim() || undefined;
+
   const submit = () => {
     if (initial) {
-      onSubmit({ url: initial.url, name: name.trim() || undefined, epg: epg.trim() || undefined });
+      onSubmit({ url: initial.url, name: name.trim() || undefined, epg: epgValue });
       return;
     }
     const u = url.trim();
     if (!validateSourceUrl(u)) {
-      toast('订阅地址需以 http:// 或 https:// 开头', 'warning');
+      toast('地址需以 http:// 或 https:// 开头', 'warning');
       return;
     }
-    onSubmit({ url: u, name: name.trim() || undefined, epg: epg.trim() || undefined });
+    onSubmit({ url: u, name: name.trim() || undefined, epg: epgValue });
   };
 
   return (
     <div className="space-y-2 border border-line rounded-lg p-3 bg-chip mb-2">
       <input
         className="input w-full disabled:opacity-60"
-        aria-label="M3U 订阅地址"
-        placeholder="M3U 订阅地址，如 https://example.com/list.m3u"
+        aria-label="直播源地址"
+        placeholder="M3U 订阅地址，或斗鱼 / 虎牙直播间地址"
         value={url}
         maxLength={500}
         disabled={!!initial}
@@ -346,19 +367,21 @@ function LiveSourceForm({
       <input
         className="input w-full"
         aria-label="直播源名称（可选）"
-        placeholder="名称（可选），如 我的频道列表"
+        placeholder="名称（可选），直播间不填则自动用主播名"
         value={name}
         maxLength={50}
         onChange={(e) => setName(e.target.value)}
       />
-      <input
-        className="input w-full"
-        aria-label="EPG 节目单地址（可选）"
-        placeholder="EPG 节目单地址（可选，XMLTV xml/xml.gz）"
-        value={epg}
-        maxLength={500}
-        onChange={(e) => setEpg(e.target.value)}
-      />
+      {!isRoom && (
+        <input
+          className="input w-full"
+          aria-label="EPG 节目单地址（可选）"
+          placeholder="EPG 节目单地址（可选，XMLTV xml/xml.gz）"
+          value={epg}
+          maxLength={500}
+          onChange={(e) => setEpg(e.target.value)}
+        />
+      )}
       <div className="flex gap-2 justify-end">
         <button className="btn-ghost btn-sm" onClick={onCancel}>
           取消
