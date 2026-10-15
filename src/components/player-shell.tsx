@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Artplayer from 'artplayer';
 import Hls, { type HlsConfig } from 'hls.js';
+import artplayerPluginDanmuku, { type Danmu, type Result as DanmukuPlugin } from 'artplayer-plugin-danmuku';
+import type { DanmakuItem } from '@/lib/types';
 
 import { PlaybackRecovery, describeHlsError } from '@/lib/playback-recovery';
 import { createHlsLoader } from '@/lib/hls-loader';
@@ -40,6 +42,8 @@ interface PlayerShellProps {
   onPause?: (position: number, duration: number) => void;
   /** 恢复策略判源不可用（重试耗尽/格式硬失败）时回调：父级弹出换源面板 */
   onRequestSwitchSource?: (reason: string) => void;
+  /** 本集弹幕（服务端已归一化）；undefined / 空数组 = 无弹幕。换集时换数据即可，不重建播放器 */
+  danmaku?: DanmakuItem[];
 }
 
 export function PlayerShell({
@@ -55,11 +59,15 @@ export function PlayerShell({
   onEnded,
   onPause,
   onRequestSwitchSource,
+  danmaku,
 }: PlayerShellProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const artRef = useRef<any>(null);
   const hlsRef = useRef<Hls | null>(null);
+  // 弹幕插件按需装载（没有弹幕的源不装，控制栏不多出按钮）；loadedRef 记录已装载的数据引用防重复 load
+  const danmakuPluginRef = useRef<DanmukuPlugin | null>(null);
+  const danmakuLoadedRef = useRef<DanmakuItem[] | undefined>(undefined);
   const [error, setError] = useState('');
   const [hint, setHint] = useState('');
   // 起播前的品牌占位图（沿用旧版 nomedia 素材），实际开始播放后隐藏
@@ -69,11 +77,11 @@ export function PlayerShell({
   // 始终持有最新 props/回调，避免重建播放器
   const propsRef = useRef({
     url, title, adFilter, autoplayNext, episodeKey, nextUrl, nextEpisodeKey,
-    getRestorePosition, onTimeUpdate, onEnded, onPause, onRequestSwitchSource,
+    getRestorePosition, onTimeUpdate, onEnded, onPause, onRequestSwitchSource, danmaku,
   });
   propsRef.current = {
     url, title, adFilter, autoplayNext, episodeKey, nextUrl, nextEpisodeKey,
-    getRestorePosition, onTimeUpdate, onEnded, onPause, onRequestSwitchSource,
+    getRestorePosition, onTimeUpdate, onEnded, onPause, onRequestSwitchSource, danmaku,
   };
 
   // 跨集共享、每次换集重置的播放链路状态
@@ -98,6 +106,46 @@ export function PlayerShell({
     setHint(text);
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
     hintTimerRef.current = setTimeout(() => setHint(''), 2500);
+  };
+
+  /** 本站弹幕条目 → 插件格式（插件按 time 升序匹配播放头） */
+  const toDanmu = (items: DanmakuItem[]): Danmu[] =>
+    items.map((d) => ({ text: d.text, time: d.time, mode: d.mode, color: d.color, border: false }));
+
+  /**
+   * 装载 / 切换弹幕。首次出现弹幕时才向 ArtPlayer 挂插件；之后换集只 load 新数据，
+   * 可见性沿用用户在播放器控制栏里的开关选择（不强行 show）。
+   */
+  const applyDanmaku = async (items: DanmakuItem[] | undefined) => {
+    const art = artRef.current;
+    if (!art) return;
+    if (danmakuLoadedRef.current === items) return;
+    danmakuLoadedRef.current = items;
+    const list = toDanmu(items ?? []);
+    const plugin = danmakuPluginRef.current;
+    if (plugin) {
+      await plugin.load(list);
+      return;
+    }
+    if (list.length === 0) return;
+    await art.plugins.add(
+      artplayerPluginDanmuku({
+        danmuku: list,
+        // 只做展示，不接发送：本站没有弹幕后端
+        emitter: false,
+        speed: 7,
+        opacity: 0.85,
+        fontSize: 22,
+        // 只占画面上部约三分之一，避免遮住字幕
+        margin: [10, '35%'],
+        antiOverlap: true,
+        synchronousPlayback: true,
+      })
+    );
+    // 装载期间播放器可能已卸载重建
+    if (artRef.current !== art) return;
+    danmakuPluginRef.current =
+      (art.plugins as unknown as { artplayerPluginDanmuku?: DanmukuPlugin }).artplayerPluginDanmuku ?? null;
   };
 
   // 片段缓存开启时调大 hls.js 自身缓冲，缓冲之外的空窗由预取器补齐
@@ -306,6 +354,8 @@ export function PlayerShell({
       },
     });
     artRef.current = art;
+    // 首帧前弹幕数据可能已就绪（查询早于播放器挂载完成），挂载时补一次装载
+    void applyDanmaku(propsRef.current.danmaku).catch(() => {});
     art.on('video:loadedmetadata', () => {
       // ArtPlayer 运行时支持 title 选项（类型定义未覆盖），用于界面标题展示
       try {
@@ -472,6 +522,8 @@ export function PlayerShell({
       getVideoPrefetcher().stop();
       art.destroy();
       artRef.current = null;
+      danmakuPluginRef.current = null;
+      danmakuLoadedRef.current = undefined;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -495,6 +547,12 @@ export function PlayerShell({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adFilter]);
+
+  // —— 弹幕数据变化（换集 / 查询就绪 / 用户开关）：只换数据，不重建播放器 ——
+  useEffect(() => {
+    void applyDanmaku(danmaku).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [danmaku]);
 
   return (
     <div className="relative w-full h-full">

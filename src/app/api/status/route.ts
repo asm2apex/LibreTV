@@ -5,7 +5,7 @@ import { getEnvLiveSources } from '@/lib/env-live-sources';
 import { getEnvSubscriptions } from '@/lib/env-subscriptions';
 import { getEnvRecommendSource } from '@/lib/env-recommend-source';
 import { getEnvImageMode } from '@/lib/env-image-mode';
-import { getParseApiTemplate } from '@/lib/env-parse-api';
+import { getDanmakuApiTemplate, getParseApiTemplate } from '@/lib/env-parse-api';
 
 export const runtime = 'nodejs';
 
@@ -30,5 +30,6 @@ export async function GET(req: Request) {
     defaultImageMode: getEnvImageMode() ?? null,
     // 只告知「是否配置」，模板本身含密钥，不下发
     parseEnabled: getParseApiTemplate() !== undefined,
+    danmakuEnabled: getDanmakuApiTemplate() !== undefined,
   });
 }

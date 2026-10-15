@@ -108,6 +108,8 @@ export interface AuthStatusResponse {
   defaultImageMode: 'direct' | 'proxy' | null;
   /** 部署者是否配置了 PARSE_API 官源解析接口：决定播放页对平台页面地址走解析还是提示未配置 */
   parseEnabled: boolean;
+  /** 部署者是否配置了 DANMAKU_API 官源弹幕接口 */
+  danmakuEnabled: boolean;
 }
 
 // —— 直播 / IPTV ——
@@ -202,4 +204,21 @@ export interface SourceListPayload {
   liveSources: Omit<LiveSourceConfig, 'key'>[];
   /** 解析统计（格式、跳过与截断），老数据可能缺失 */
   stats?: SubscriptionParseStats;
+}
+
+// —— 官源弹幕 ——
+
+/** 单条弹幕（服务端已归一化；mode 对齐 ArtPlayer 弹幕插件：0 滚动 / 1 顶部 / 2 底部） */
+export interface DanmakuItem {
+  /** 出现时间（秒） */
+  time: number;
+  text: string;
+  mode: 0 | 1 | 2;
+  /** #rrggbb；缺省用播放器默认色 */
+  color?: string;
+}
+
+export interface DanmakuResponse {
+  count: number;
+  items: DanmakuItem[];
 }

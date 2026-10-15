@@ -35,6 +35,7 @@ const status = (over: Partial<AuthStatusResponse> = {}): AuthStatusResponse => (
   defaultRecommendSource: null,
   defaultImageMode: null,
   parseEnabled: false,
+  danmakuEnabled: false,
   ...over,
 });
 

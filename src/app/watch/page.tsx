@@ -49,7 +49,7 @@ function WatchContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const store = useAppStore();
-  const { verified, parseEnabled } = useAuth();
+  const { verified, parseEnabled, danmakuEnabled } = useAuth();
 
   const sourceKey = searchParams.get('source') || '';
   const vodId = searchParams.get('id') || '';
@@ -111,6 +111,18 @@ function WatchContent() {
     if (!currentUrl || !parseNeeded) return currentUrl;
     return parseQuery.isSuccess ? api.parsePlaylistUrl(currentUrl, { nonce: reparseNonce }) : '';
   }, [currentUrl, parseNeeded, parseQuery.isSuccess, reparseNonce]);
+  // 弹幕只有官源页面地址才有来源；与解析并行请求，服务端缓存 6 小时，这里对齐
+  const danmakuQuery = useQuery({
+    queryKey: ['danmaku', currentUrl],
+    queryFn: ({ signal }) => api.danmaku(currentUrl, signal),
+    enabled: parseNeeded && danmakuEnabled && store.danmakuEnabled && verified,
+    staleTime: 6 * 60 * 60_000,
+    // 厂商首次拉某集弹幕偶发超时回非 JSON（实测 11s 后 502）：补一次重试，弹幕非关键路径，代价是至多多一次调用
+    retry: 1,
+    retryDelay: 2000,
+  });
+  // 用户关闭开关时传 undefined：播放器把当前弹幕清空而不卸载插件
+  const danmakuItems = store.danmakuEnabled ? danmakuQuery.data?.items : undefined;
   // 下一集预热：解析源不预解析（每次解析计费），直链源照旧
   const nextRaw = currentIndex + 1 < episodes.length ? episodes[currentIndex + 1] : undefined;
   const nextEpisodeUrl = nextRaw && !needsParse(nextRaw) ? nextRaw : undefined;
@@ -247,6 +259,7 @@ function WatchContent() {
               {source.name}
               {episodes.length > 0 && ` · 第 ${currentIndex + 1}/${episodes.length} 集`}
               {parseNeeded && ' · 官源解析'}
+              {danmakuItems && danmakuItems.length > 0 && ` · 弹幕 ${danmakuItems.length}`}
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -293,6 +306,7 @@ function WatchContent() {
                   onEnded={handleEnded}
                   // 播放中源失效（重试耗尽 / 格式硬失败）：解析源先强制重解析一次，否则拉起换源面板（与顶栏「切换资源」同一入口）
                   onRequestSwitchSource={handleRequestSwitchSource}
+                  danmaku={danmakuItems}
                 />
               ) : currentUrl && parseNeeded ? (
                 <div className="w-full h-full flex items-center justify-center px-4">

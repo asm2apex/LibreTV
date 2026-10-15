@@ -1,6 +1,6 @@
 'use client';
 
-import type { SearchResponse, SearchStreamEvent, SourceSearchOutcome, VideoDetail, DoubanResponse, BangumiCalendarResponse, AuthStatusResponse, SourceConfig, SearchResultItem, LivePlaylistResponse, LiveEpgResponse, SourceListPayload } from './types';
+import type { SearchResponse, SearchStreamEvent, SourceSearchOutcome, VideoDetail, DoubanResponse, BangumiCalendarResponse, AuthStatusResponse, SourceConfig, SearchResultItem, LivePlaylistResponse, LiveEpgResponse, SourceListPayload, DanmakuResponse } from './types';
 
 /**
  * 客户端 API 封装。401 时触发全局事件打开登录框，
@@ -149,6 +149,12 @@ export const api = {
       throw new ApiError(msg, res.status);
     }
     return res.text();
+  },
+
+  /** 官源弹幕：按平台页面地址取归一化后的弹幕（服务端缓存 6 小时） */
+  danmaku: (pageUrl: string, signal?: AbortSignal) => {
+    const sp = new URLSearchParams({ url: pageUrl });
+    return request<DanmakuResponse>(`/api/danmaku?${sp.toString()}`, { signal });
   },
 
   /**

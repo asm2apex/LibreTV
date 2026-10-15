@@ -24,6 +24,8 @@ interface AuthContextValue {
   version: string | null;
   /** 服务端是否配置了官源解析接口（PARSE_API） */
   parseEnabled: boolean;
+  /** 服务端是否配置了官源弹幕接口（DANMAKU_API） */
+  danmakuEnabled: boolean;
   openLogin: () => void;
   logout: () => Promise<void>;
 }
@@ -34,6 +36,7 @@ const AuthContext = createContext<AuthContextValue>({
   setupRequired: false,
   version: null,
   parseEnabled: false,
+  danmakuEnabled: false,
   openLogin: () => {},
   logout: async () => {},
 });
@@ -48,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [setupRequired, setSetupRequired] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   const [parseEnabled, setParseEnabled] = useState(false);
+  const [danmakuEnabled, setDanmakuEnabled] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -63,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSetupRequired(!s.passwordRequired);
         setVersion(s.version);
         setParseEnabled(Boolean(s.parseEnabled));
+        setDanmakuEnabled(Boolean(s.danmakuEnabled));
         setChecked(true);
       })
       .catch(() => {
@@ -120,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [toast, queryClient]);
 
   return (
-    <AuthContext.Provider value={{ checked, verified, setupRequired, version, parseEnabled, openLogin, logout }}>
+    <AuthContext.Provider value={{ checked, verified, setupRequired, version, parseEnabled, danmakuEnabled, openLogin, logout }}>
       {children}
       {modalOpen && (
         <LoginModal

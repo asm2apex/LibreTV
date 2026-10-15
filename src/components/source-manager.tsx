@@ -574,6 +574,12 @@ function PlaybackPanel() {
           checked={store.autoplayNext}
           onChange={(v) => store.updateSettings({ autoplayNext: v })}
         />
+        <ToggleRow
+          label="弹幕"
+          description="官源解析的影片加载对应弹幕（需部署者配置 DANMAKU_API）；播放器控制栏可临时隐藏"
+          checked={store.danmakuEnabled}
+          onChange={(v) => store.updateSettings({ danmakuEnabled: v })}
+        />
       </div>
       <VideoCachePanel />
     </section>

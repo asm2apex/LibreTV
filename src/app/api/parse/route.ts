@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { guardRequest, jsonError } from '@/lib/api-guard';
 import { fetchUpstream, fetchUpstreamWithMeta, getCache, setCache } from '@/lib/fetch-utils';
 import { checkUpstreamAllowed } from '@/lib/ssrf';
-import { buildParseApiUrl, getParseApiTemplate } from '@/lib/env-parse-api';
+import { buildApiUrl, getParseApiTemplate } from '@/lib/env-parse-api';
 import { needsParse } from '@/lib/episode-url';
 import { absolutizeM3u8, makeAbsolute } from '@/lib/m3u8';
 
@@ -117,7 +117,7 @@ export async function GET(req: Request) {
   }
 
   // 模板由部署者配置，但仍过一遍 SSRF：填错成内网地址时在这里报错比静默请求内网更安全
-  const apiUrl = buildParseApiUrl(template, pageUrl);
+  const apiUrl = buildApiUrl(template, pageUrl);
   const apiVerdict = await checkUpstreamAllowed(apiUrl);
   if (!apiVerdict.ok) return jsonError(`解析接口地址不可用：${apiVerdict.reason}`, 500);
 
