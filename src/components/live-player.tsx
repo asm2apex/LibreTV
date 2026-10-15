@@ -13,6 +13,7 @@ import { Spinner } from './states';
  *   HLS 直连与代理均失败后**回退原生播放**一次（覆盖"内容是 MP4 却无 .m3u8 后缀"的源）；
  * - 每级直连失败自动切换到 /api/live/stream 代理通道重试一次；
  * - 致命错误经 onFatalError 上报、「重新加载」经 onReload 上报：平台直播间播放器据此换候选流 / 重新解析；
+ * - 播放中卡死看门狗（15s 不前进）与 FLV 上游断流（loader 结束）都按致命错误上报；
  * - 直播态 UI：无进度条、无倍速、无截图、无连播。
  */
 
@@ -265,6 +266,11 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel, onFatalEr
           stashInitialSize: 128,
           liveBufferLatencyChasing: true,
           lazyLoad: false,
+          // 关掉「音频时间戳大跳变时塞静音帧」：原画 / 转推流的时间戳跳变（编码器重连、CDN 拼接）会让
+          // mpegts.js 塞进与跳变等长的静音，表现为画面照常、声音从此消失（视频轨会把跳变重新对齐，音轨不会）。
+          // 关掉后音轨按帧数连续排列，与视频一样把跳变吸收；代价是真正缺帧的音频会提前（音画不同步），
+          // 直播推流几乎不缺帧，两害取其轻
+          fixAudioTimestampGap: false,
         }
       );
       mpegtsRef.current = player;
@@ -383,9 +389,31 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel, onFatalEr
       }
     }, 15000);
 
+    // 播放中卡死看门狗：非暂停状态下 currentTime 连续 15s 不前进即视为流中断。
+    // 上游静默断流、音轨时间戳倒退被整段丢弃（缓冲区停止增长）这类情况 mpegts.js / hls.js 都不会自行报错，
+    // 画面会定住；上报致命错误让直播间播放器重新解析续播，普通频道停在错误层由用户重载
+    let lastTime = -1;
+    let stuckTicks = 0;
+    const stallTimer = setInterval(() => {
+      if (!playbackStarted || disposed || destroyed) return;
+      const video = art.video as HTMLVideoElement | undefined;
+      if (!video || video.paused || video.ended) {
+        stuckTicks = 0;
+        return;
+      }
+      if (video.currentTime === lastTime) {
+        stuckTicks++;
+        if (stuckTicks >= 3) failOnce('直播流卡住，请重新加载');
+      } else {
+        stuckTicks = 0;
+        lastTime = video.currentTime;
+      }
+    }, 5000);
+
     return () => {
       disposed = true;
       clearTimeout(startTimer);
+      clearInterval(stallTimer);
       if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
       cleanupEngines();
       art.destroy();
