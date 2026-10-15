@@ -208,6 +208,35 @@ describe('订阅同步的 store 语义', () => {
     expect(store().liveSelectedUrls).toEqual([shared]);
     expect(store().liveFavorites).toContain(exclusive);
   });
+
+  it('删除订阅：手动添加的直播源与其启用状态原样保留', () => {
+    const manual = 'https://manual.example.com/list.m3u';
+    const subOnly = 'https://a-live.example.com/1.m3u';
+    store().addLiveSubscription(manual, '手动源');
+    store().applySubscriptionLive('https://a.example.com/list.json', [{ name: 'A1', url: subOnly }]);
+    store().addSubscription('https://a.example.com/list.json', 'A');
+
+    store().removeSubscription('https://a.example.com/list.json');
+    // 回归：此前从「引用了本订阅的条目」出发重建列表，手动源被连带清空
+    expect(store().liveSubscriptions.map((s) => s.url)).toEqual([manual]);
+    expect(store().liveSubscriptions[0].fromSubscriptions).toEqual([]);
+    expect(store().liveSelectedUrls).toEqual([manual]);
+  });
+
+  it('删除订阅：其他订阅独有的直播源不受牵连', () => {
+    const aOnly = 'https://a-live.example.com/1.m3u';
+    const bOnly = 'https://b-live.example.com/1.m3u';
+    store().applySubscriptionLive('https://a.example.com/list.json', [{ name: 'A1', url: aOnly }]);
+    store().applySubscriptionLive('https://b.example.com/list.json', [{ name: 'B1', url: bOnly }]);
+    store().addSubscription('https://a.example.com/list.json', 'A');
+    store().addSubscription('https://b.example.com/list.json', 'B');
+
+    store().removeSubscription('https://a.example.com/list.json');
+    expect(store().subscriptions.map((s) => s.url)).toEqual(['https://b.example.com/list.json']);
+    expect(store().liveSubscriptions.map((s) => s.url)).toEqual([bOnly]);
+    expect(store().liveSubscriptions[0].fromSubscriptions).toEqual(['https://b.example.com/list.json']);
+    expect(store().liveSelectedUrls).toEqual([bOnly]);
+  });
 });
 
 describe('可撤销删除与订阅同步状态', () => {
