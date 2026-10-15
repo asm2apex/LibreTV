@@ -17,6 +17,7 @@ const PlayerShell = dynamic(() => import('@/components/player-shell').then((m) =
 });
 import { EmptyState, ErrorState, LoadingState, Spinner } from '@/components/states';
 import { SwitchSourceModal } from '@/components/switch-source';
+import { Switch } from '@/components/settings-shared';
 import { enqueueDownload } from '@/components/download-manager';
 import { Icon } from '@/components/icon';
 import { useAuth } from '@/components/auth';
@@ -253,16 +254,16 @@ function WatchContent() {
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-3">
           <BackButton />
           <HomeButton />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="text-sm font-medium text-content truncate">{videoTitle}</h1>
-            <p className="text-xs text-faint">
+            <p className="text-xs text-faint truncate">
               {source.name}
               {episodes.length > 0 && ` · 第 ${currentIndex + 1}/${episodes.length} 集`}
               {parseNeeded && ' · 官源解析'}
               {danmakuItems && danmakuItems.length > 0 && ` · 弹幕 ${danmakuItems.length}`}
             </p>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-2 shrink-0">
             <button
               className="btn-ghost btn-sm"
               onClick={() => {
@@ -358,15 +359,14 @@ function WatchContent() {
               >
                 下一集
               </button>
-              <label className="flex items-center gap-1.5 text-xs text-muted ml-auto cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="h-3.5 w-3.5 accent-[#2563eb]"
+              <div className="flex items-center gap-2 text-xs text-muted ml-auto">
+                <span>自动连播</span>
+                <Switch
                   checked={store.autoplayNext}
-                  onChange={(e) => store.updateSettings({ autoplayNext: e.target.checked })}
+                  onChange={(v) => store.updateSettings({ autoplayNext: v })}
+                  label="自动连播"
                 />
-                自动连播
-              </label>
+              </div>
             </div>
           </div>
 
