@@ -318,7 +318,7 @@ function WatchContent() {
                   ) : parseQuery.isError ? (
                     <ErrorState
                       tone="onDark"
-                      message={`解析失败：${parseQuery.error?.message || '未知错误'}`}
+                      message={parseQuery.error?.message || '解析失败：未知错误'}
                       onRetry={() => void parseQuery.refetch()}
                       retryLabel="重新解析"
                     />

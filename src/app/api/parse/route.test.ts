@@ -139,6 +139,22 @@ describe('GET /api/parse', () => {
     expect(state.calls.filter((u) => u.startsWith('https://parse.test/'))).toHaveLength(2);
   });
 
+  it('厂商 msg 本身就是「解析失败」时不叠加同义前缀（此前页面显示为「解析失败：解析失败」）', async () => {
+    state.apiBody = JSON.stringify({ code: 404, msg: '解析失败' });
+    const res = await GET(makeRequest(page()));
+    expect(res.status).toBe(502);
+    const { error } = (await res.json()) as { error: string };
+    expect(error).toBe('解析失败：解析接口未返回播放地址');
+    expect(error.match(/解析失败/g)).toHaveLength(1);
+  });
+
+  it('厂商 msg 带「解析失败：」前缀再跟具体原因时，只保留具体原因', async () => {
+    state.apiBody = JSON.stringify({ code: 404, msg: '解析失败：资源已下架' });
+    const res = await GET(makeRequest(page()));
+    expect(res.status).toBe(502);
+    await expect(res.json()).resolves.toMatchObject({ error: '解析失败：资源已下架' });
+  });
+
   it('解析接口返回非 JSON（如 HTML 拦截页）时给出可读错误', async () => {
     state.apiBody = '<html>IP未授权</html>';
     const res = await GET(makeRequest(page()));

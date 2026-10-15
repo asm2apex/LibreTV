@@ -61,8 +61,9 @@ function extractMediaUrl(body: unknown): { url: string } | { error: string } {
   if (typeof candidate === 'string' && /^https?:\/\//i.test(candidate.trim())) {
     return { url: candidate.trim() };
   }
-  const msg = typeof record.msg === 'string' && record.msg.trim() ? record.msg.trim() : '解析接口未返回播放地址';
-  return { error: msg };
+  // 厂商 msg 常常就是「解析失败」本身，叠上本站前缀会变成「解析失败：解析失败」，先剥掉同义前缀
+  const raw = typeof record.msg === 'string' ? record.msg.trim().replace(/^解析失败[:：]?\s*/, '') : '';
+  return { error: raw || '解析接口未返回播放地址' };
 }
 
 /** master playlist 时取带宽最高的变体（绝对地址）；media playlist 返回 null */
