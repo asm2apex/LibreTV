@@ -3,9 +3,6 @@
 import { Header } from '@/components/header';
 import { SiteFooter } from '@/components/site-footer';
 
-/** 源码仓库地址：AGPL 要求向网络使用者提供获取源码的方式（仅登录后可见，不进入公开页面） */
-const SOURCE_REPO_URL = 'https://github.com/asm2apex/LibreTV';
-
 export default function AboutPage() {
   return (
     <div className="min-h-screen flex flex-col">
@@ -44,13 +41,6 @@ export default function AboutPage() {
           <p className="text-sm text-faint leading-relaxed">
             本项目不存储、不制作任何视频内容，仅提供第三方公开接口的聚合与播放能力。
             请尊重版权，所有内容的合法性由对应数据源负责。
-          </p>
-          <p className="text-sm text-faint leading-relaxed mt-2">
-            本项目基于 AGPL-3.0 协议开源，源码见{' '}
-            <a href={SOURCE_REPO_URL} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-              代码仓库
-            </a>
-            。
           </p>
         </section>
       </main>
