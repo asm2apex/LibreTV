@@ -118,6 +118,40 @@ export const api = {
   logout: () => request<{ success: boolean }>('/api/auth', { method: 'DELETE' }),
 
   /**
+   * 官源解析清单的本站地址：hls.js / 预取器 / 下载器都拿它当 m3u8 源，
+   * 服务端按页面地址缓存清单文本，重复拉取不会重复付费解析。
+   * nonce 只为让播放器把它识别成新地址以重新加载（强制重解析后使用），服务端忽略该参数。
+   */
+  parsePlaylistUrl: (pageUrl: string, opts?: { nonce?: number }) => {
+    const sp = new URLSearchParams({ url: pageUrl });
+    if (opts?.nonce) sp.set('v', String(opts.nonce));
+    return `/api/parse?${sp.toString()}`;
+  },
+
+  /** 官源解析：拉取并校验清单文本；refresh 绕过服务端缓存强制重解析（厂商按次计费，仅在失效时用） */
+  parsePlaylist: async (pageUrl: string, opts?: { refresh?: boolean; signal?: AbortSignal }): Promise<string> => {
+    const sp = new URLSearchParams({ url: pageUrl });
+    if (opts?.refresh) sp.set('refresh', '1');
+    let res: Response;
+    try {
+      res = await fetch(`/api/parse?${sp.toString()}`, { signal: opts?.signal });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') throw err;
+      throw new ApiError('网络请求失败，请检查网络连接', 0);
+    }
+    throwForAuthStatus(res);
+    if (!res.ok) {
+      let msg = `请求失败 (${res.status})`;
+      try {
+        const data = (await res.json()) as { error?: string };
+        if (data?.error) msg = data.error;
+      } catch { /* 忽略解析失败 */ }
+      throw new ApiError(msg, res.status);
+    }
+    return res.text();
+  },
+
+  /**
    * 聚合搜索。传入 onSource 时走 /api/search?stream=1 的 NDJSON 流：
    * 每个源结算立即回调（健康源结果不再等坏源超时），最终以聚合结果 resolve。
    * 未传 onSource 或流不可用时回退为一次性 JSON 请求。

@@ -106,6 +106,8 @@ export interface AuthStatusResponse {
   defaultRecommendSource: 'douban' | 'bangumi' | 'hot-list' | null;
   /** 部署者通过 DEFAULT_IMAGE_MODE 环境变量指定的封面图加载方式默认值（未配置时为 null） */
   defaultImageMode: 'direct' | 'proxy' | null;
+  /** 部署者是否配置了 PARSE_API 官源解析接口：决定播放页对平台页面地址走解析还是提示未配置 */
+  parseEnabled: boolean;
 }
 
 // —— 直播 / IPTV ——

@@ -34,6 +34,7 @@ const status = (over: Partial<AuthStatusResponse> = {}): AuthStatusResponse => (
   defaultSubscriptions: [],
   defaultRecommendSource: null,
   defaultImageMode: null,
+  parseEnabled: false,
   ...over,
 });
 

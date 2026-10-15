@@ -15,7 +15,7 @@ const PlayerShell = dynamic(() => import('@/components/player-shell').then((m) =
     </div>
   ),
 });
-import { EmptyState, LoadingState, Spinner } from '@/components/states';
+import { EmptyState, ErrorState, LoadingState, Spinner } from '@/components/states';
 import { SwitchSourceModal } from '@/components/switch-source';
 import { enqueueDownload } from '@/components/download-manager';
 import { Icon } from '@/components/icon';
@@ -30,6 +30,7 @@ import {
   db,
 } from '@/lib/db';
 import { cn } from '@/lib/utils';
+import { needsParse } from '@/lib/episode-url';
 
 /**
  * 播放页（唯一入口，替代旧版 watch.html → player.html 跳转链）。
@@ -48,7 +49,7 @@ function WatchContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const store = useAppStore();
-  const { verified } = useAuth();
+  const { verified, parseEnabled } = useAuth();
 
   const sourceKey = searchParams.get('source') || '';
   const vodId = searchParams.get('id') || '';
@@ -88,6 +89,46 @@ function WatchContent() {
     if (episodes.length > 0) return Math.min(Math.max(indexParam, 0), episodes.length - 1);
     return indexParam;
   }, [episodes, indexParam]);
+
+  // 官源解析：平台页面地址不能直接播，先经 /api/parse 换成本站下发的清单再交给播放器
+  const parseNeeded = needsParse(currentUrl);
+  const parseQuery = useQuery({
+    queryKey: ['parse', currentUrl],
+    queryFn: ({ signal }) => api.parsePlaylist(currentUrl, { signal }),
+    enabled: parseNeeded && parseEnabled && verified,
+    // 服务端清单缓存 1 小时，这里对齐；解析按次计费，失败不自动重试，交给用户手动重解析
+    staleTime: 50 * 60_000,
+    retry: false,
+  });
+  // 播放中失效时允许强制重解析一次：nonce 变化让播放器把同一来源识别成新地址而重新加载
+  const [reparseNonce, setReparseNonce] = useState(0);
+  const reparseUsedRef = useRef(false);
+  useEffect(() => {
+    reparseUsedRef.current = false;
+    setReparseNonce(0);
+  }, [currentUrl]);
+  const mediaUrl = useMemo(() => {
+    if (!currentUrl || !parseNeeded) return currentUrl;
+    return parseQuery.isSuccess ? api.parsePlaylistUrl(currentUrl, { nonce: reparseNonce }) : '';
+  }, [currentUrl, parseNeeded, parseQuery.isSuccess, reparseNonce]);
+  // 下一集预热：解析源不预解析（每次解析计费），直链源照旧
+  const nextRaw = currentIndex + 1 < episodes.length ? episodes[currentIndex + 1] : undefined;
+  const nextEpisodeUrl = nextRaw && !needsParse(nextRaw) ? nextRaw : undefined;
+
+  const handleRequestSwitchSource = useCallback(async () => {
+    // 解析源：清单可能已过服务端缓存期或分片失效，先强制重解析一次，仍失败再弹换源面板
+    if (parseNeeded && !reparseUsedRef.current) {
+      reparseUsedRef.current = true;
+      try {
+        await api.parsePlaylist(currentUrl, { refresh: true });
+        setReparseNonce((n) => n + 1);
+        return;
+      } catch {
+        // 重解析也失败：落到换源面板
+      }
+    }
+    setSwitchOpen(true);
+  }, [parseNeeded, currentUrl]);
 
   const goEpisode = useCallback(
     (index: number) => {
@@ -205,15 +246,17 @@ function WatchContent() {
             <p className="text-xs text-faint">
               {source.name}
               {episodes.length > 0 && ` · 第 ${currentIndex + 1}/${episodes.length} 集`}
+              {parseNeeded && ' · 官源解析'}
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <button
               className="btn-ghost btn-sm"
               onClick={() => {
-                if (!currentUrl) return;
+                // 解析源用本站清单地址：下载器解析时命中服务端缓存，不会再去啃平台页面
+                if (!mediaUrl) return;
                 enqueueDownload({
-                  url: currentUrl,
+                  url: mediaUrl,
                   // 多集才带集数后缀；单集影片（含电影）文件名就是纯标题
                   title: `${videoTitle}${episodes.length > 1 ? ` 第${currentIndex + 1}集` : ''}`,
                   format: 'MP4',
@@ -235,22 +278,43 @@ function WatchContent() {
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
           <div>
             <div className="aspect-video bg-black rounded-lg overflow-hidden">
-              {currentUrl ? (
+              {mediaUrl ? (
                 <PlayerShell
-                  url={currentUrl}
+                  url={mediaUrl}
                   title={videoTitle}
                   adFilter={store.adFilter}
                   autoplayNext={store.autoplayNext}
                   episodeKey={`${sourceKey}:${vodId}:${currentIndex}`}
-                  nextUrl={currentIndex + 1 < episodes.length ? episodes[currentIndex + 1] : undefined}
-                  nextEpisodeKey={currentIndex + 1 < episodes.length ? `${sourceKey}:${vodId}:${currentIndex + 1}` : undefined}
+                  nextUrl={nextEpisodeUrl}
+                  nextEpisodeKey={nextEpisodeUrl ? `${sourceKey}:${vodId}:${currentIndex + 1}` : undefined}
                   getRestorePosition={getRestorePosition}
                   onTimeUpdate={handleProgress}
                   onPause={handleProgress}
                   onEnded={handleEnded}
-                  // 播放中源失效（重试耗尽 / 格式硬失败）：直接拉起换源面板，与顶栏「切换资源」同一入口
-                  onRequestSwitchSource={() => setSwitchOpen(true)}
+                  // 播放中源失效（重试耗尽 / 格式硬失败）：解析源先强制重解析一次，否则拉起换源面板（与顶栏「切换资源」同一入口）
+                  onRequestSwitchSource={handleRequestSwitchSource}
                 />
+              ) : currentUrl && parseNeeded ? (
+                <div className="w-full h-full flex items-center justify-center px-4">
+                  {!parseEnabled ? (
+                    <ErrorState
+                      tone="onDark"
+                      message="该源的播放地址是官方平台页面（爱奇艺 / 腾讯 / 优酷 / 芒果 / B 站），需要部署者配置 PARSE_API 解析接口后才能播放"
+                    />
+                  ) : parseQuery.isError ? (
+                    <ErrorState
+                      tone="onDark"
+                      message={`解析失败：${parseQuery.error?.message || '未知错误'}`}
+                      onRetry={() => void parseQuery.refetch()}
+                      retryLabel="重新解析"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-3">
+                      <Spinner size="lg" tone="onDark" />
+                      <p className="text-white/70 text-sm">正在解析官方源…</p>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   {detailQuery.isLoading ? (

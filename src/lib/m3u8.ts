@@ -60,6 +60,25 @@ export function rewriteM3u8(
 }
 
 /**
+ * 把清单内的相对地址（分片 / KEY / MAP / MEDIA 的 URI）按 baseUrl 落实为绝对地址，其余行原样保留。
+ * 服务端代解析取回的清单会以本站地址（/api/parse?url=…）下发，播放器据此解析相对路径只会指向本站，
+ * 因此必须在下发前用上游清单的真实地址把相对地址展开。
+ */
+export function absolutizeM3u8(content: string, baseUrl: string): string {
+  return content
+    .split('\n')
+    .map((line) => {
+      if (line.startsWith('#EXT-X-KEY') || line.startsWith('#EXT-X-MAP') || line.startsWith('#EXT-X-MEDIA')) {
+        return line.replace(/(URI=")([^"]+)(")/g, (_m, p1: string, uri: string, p2: string) => p1 + makeAbsolute(uri, baseUrl) + p2);
+      }
+      const trimmed = line.trim();
+      if (trimmed === '' || trimmed.startsWith('#')) return line;
+      return makeAbsolute(trimmed, baseUrl);
+    })
+    .join('\n');
+}
+
+/**
  * 片头广告段判定上限。dytt 等采集站把固定一支广告（约 15-60s，10 片左右）
  * 作为首个 DISCONTINUITY 段混入所有视频；正片分段（每段 20-40s）与其结构相同，
  * 只能靠「位于片头 + 短小 + 之后仍有分段」这三个特征保守区分，超限即不动。

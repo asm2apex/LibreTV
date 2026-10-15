@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parseM3u8Playlist } from './m3u8-parse';
-import { isProxiedUri, rewriteM3u8, stripAdGroups, stripLeadAdGroup } from './m3u8';
+import { absolutizeM3u8, isProxiedUri, rewriteM3u8, stripAdGroups, stripLeadAdGroup } from './m3u8';
 
 const BASE = 'https://cdn.example.com/live/index.m3u8';
 
@@ -56,6 +56,31 @@ describe('isProxiedUri', () => {
     expect(isProxiedUri('/api/live/stream?url=' + encodeURIComponent('https://x.com/live.m3u8'))).toBe(true);
     expect(isProxiedUri('https://cdn.example.com/seg1.ts')).toBe(false);
     expect(isProxiedUri('/relative/seg1.ts')).toBe(false);
+  });
+});
+
+describe('absolutizeM3u8', () => {
+  it('相对分片 / KEY / MAP / 子清单按清单真实地址展开，绝对地址与标签行原样保留', () => {
+    const input = [
+      '#EXTM3U',
+      '#EXT-X-STREAM-INF:BANDWIDTH=1280000',
+      '720p.m3u8',
+      '#EXT-X-KEY:METHOD=AES-128,URI="key.bin",IV=0x1',
+      '#EXT-X-MAP:URI="/init.mp4"',
+      '#EXTINF:5,',
+      'seg1.ts\r',
+      'https://other.example.com/seg2.ts',
+      '',
+      '#EXT-X-ENDLIST',
+    ].join('\n');
+    const out = absolutizeM3u8(input, 'https://cdn.example.com/live/index.m3u8?token=abc').split('\n');
+    expect(out[2]).toBe('https://cdn.example.com/live/720p.m3u8');
+    expect(out[3]).toBe('#EXT-X-KEY:METHOD=AES-128,URI="https://cdn.example.com/live/key.bin",IV=0x1');
+    expect(out[4]).toBe('#EXT-X-MAP:URI="https://cdn.example.com/init.mp4"');
+    expect(out[6]).toBe('https://cdn.example.com/live/seg1.ts');
+    expect(out[7]).toBe('https://other.example.com/seg2.ts');
+    expect(out[8]).toBe('');
+    expect(out[9]).toBe('#EXT-X-ENDLIST');
   });
 });
 

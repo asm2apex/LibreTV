@@ -39,3 +39,5 @@ services:
       # - USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36
       # 可选：影视榜单推荐源（60s API）实例地址，官方公共实例有限流
       # - 60S_API_BASE=https://60s.crystelf.top
+      # 可选：官源解析接口模板（分集为爱奇艺/腾讯/优酷/芒果/B站页面地址的采集站需要），密钥只留在服务端
+      # - PARSE_API=https://api.example.com/api/?key=your-key&url={url}
