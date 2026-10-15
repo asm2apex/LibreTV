@@ -191,7 +191,7 @@ export interface LiveRoomInfo {
   living: boolean;
   /** 开播时的候选流，按推荐顺序排列，播放器依次尝试；未开播为空数组 */
   streams: LiveRoomStream[];
-  /** 平台给出的画质档名（如 蓝光8M / 高清），仅斗鱼取流时有 */
+  /** 平台给出的画质档名（斗鱼：实际下发的档；虎牙：不带 ratio 时的默认最高档） */
   quality?: string;
   /** 本次取流是否带了登录态（斗鱼：登录后才有蓝光 / 原画且匿名流不再 5 分钟一断） */
   loggedIn?: boolean;

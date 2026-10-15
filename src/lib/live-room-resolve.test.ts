@@ -125,6 +125,8 @@ describe('虎牙', () => {
       title: '峡谷已前十 顶级新号',
       avatar: 'https://huyaimg.msstatic.com/avatar/a_180_135.jpg',
       living: true,
+      // 不带 ratio 时下发 iBitRate 为 0 的默认档
+      quality: '蓝光8M',
     });
     expect(info.streams.map((s) => `${s.label}:${s.format}`)).toEqual(['AL:flv', 'AL:hls', 'TX:flv', 'TX:hls']);
     for (const s of info.streams) expect(s.url.startsWith('https://')).toBe(true);

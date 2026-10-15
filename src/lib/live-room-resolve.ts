@@ -132,6 +132,7 @@ async function resolveHuya(roomKey: string): Promise<LiveRoomInfo> {
   const roomId = String(Number(profile.profileRoom) || 0);
   if (roomId === '0') throw new LiveRoomError('虎牙直播间不存在', 404);
   const living = roomData.state === 'ON' || roomData.isOn === true;
+  const play = living ? huyaStreams(html) : { streams: [], quality: undefined };
   return {
     platform: 'huya',
     roomUrl: canonicalLiveRoomUrl('huya', roomId),
@@ -140,12 +141,19 @@ async function resolveHuya(roomKey: string): Promise<LiveRoomInfo> {
     title: text(roomData.introduction),
     avatar: optionalUrl(profile.avatar),
     living,
-    streams: living ? huyaStreams(html) : [],
+    streams: play.streams,
+    quality: play.quality,
   };
 }
 
+interface HuyaStreamJson {
+  data?: { gameStreamInfoList?: HuyaStreamInfo[] }[];
+  /** 画质档列表；iBitRate 为 0 的那档就是不带 ratio 参数时下发的默认（最高）档 */
+  vMultiStreamInfo?: { sDisplayName?: string; iBitRate?: number }[];
+}
+
 /** hyPlayerConfig 里的 stream 字段（紧跟 `};` 结束）；兜底匹配对象后紧跟 iWebDefaultBitRate 的写法 */
-function huyaStreamJson(html: string): { data?: { gameStreamInfoList?: HuyaStreamInfo[] }[] } | null {
+function huyaStreamJson(html: string): HuyaStreamJson | null {
   const candidates: string[] = [];
   const m1 = html.match(/stream:\s*(\{"data"[\s\S]*?)\s*\};/);
   if (m1) candidates.push(m1[1]);
@@ -153,7 +161,7 @@ function huyaStreamJson(html: string): { data?: { gameStreamInfoList?: HuyaStrea
   if (m2) candidates.push(`${m2[1]}}`);
   for (const raw of candidates) {
     try {
-      return JSON.parse(raw) as { data?: { gameStreamInfoList?: HuyaStreamInfo[] }[] };
+      return JSON.parse(raw) as HuyaStreamJson;
     } catch {
       /* 试下一个候选 */
     }
@@ -161,9 +169,12 @@ function huyaStreamJson(html: string): { data?: { gameStreamInfoList?: HuyaStrea
   return null;
 }
 
-function huyaStreams(html: string): LiveRoomStream[] {
-  const list = huyaStreamJson(html)?.data?.[0]?.gameStreamInfoList ?? [];
+function huyaStreams(html: string): { streams: LiveRoomStream[]; quality?: string } {
+  const stream = huyaStreamJson(html);
+  const list = stream?.data?.[0]?.gameStreamInfoList ?? [];
   if (list.length === 0) throw new LiveRoomError('虎牙房间页未给出流地址，页面结构可能已变化');
+  const rates = stream?.vMultiStreamInfo ?? [];
+  const quality = (rates.find((r) => r.iBitRate === 0) ?? rates[0])?.sDisplayName || undefined;
   const uid = 1200000000000 + Math.floor(Math.random() * 99999999999);
   const streams: LiveRoomStream[] = [];
   // 取前两条线路各自的 FLV + HLS：FLV 延迟低放前面，HLS 兜底（无 MSE 的 iOS 只能原生 HLS），
@@ -187,7 +198,7 @@ function huyaStreams(html: string): LiveRoomStream[] {
     }
   }
   if (streams.length === 0) throw new LiveRoomError('虎牙房间页未给出流地址，页面结构可能已变化');
-  return streams;
+  return { streams, quality };
 }
 
 /**

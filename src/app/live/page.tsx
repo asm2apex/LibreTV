@@ -291,7 +291,12 @@ function LiveContent() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="live-dot shrink-0" />
+                    {/* 直播间知道开播状态：未开播用静态灰点；普通频道无从得知，保持呼吸红点 */}
+                    {isRoom && room && !room.living ? (
+                      <span className="w-2 h-2 rounded-full bg-faint/50 shrink-0" title="未开播" />
+                    ) : (
+                      <span className="live-dot shrink-0" />
+                    )}
                     <h1 className="text-sm font-semibold text-content truncate">{currentChannel.name}</h1>
                     {currentChannel.group && (
                       <span className="tag bg-chip text-faint shrink-0">{currentChannel.group}</span>
@@ -302,7 +307,13 @@ function LiveContent() {
                     {isRoom && room?.quality && (
                       <span
                         className="tag bg-chip text-faint shrink-0"
-                        title={room.loggedIn ? '已用斗鱼登录态取流' : '匿名取流只给高清档，在设置 → 直播源登录斗鱼账号可取更高画质'}
+                        title={
+                          room.loggedIn
+                            ? '已用斗鱼登录态取流'
+                            : room.platform === 'douyu'
+                              ? '匿名取流的画质档，在设置 → 直播源登录斗鱼账号可取更高画质'
+                              : '平台给出的默认（最高）画质档'
+                        }
                       >
                         {room.quality}
                         {room.loggedIn ? ' · 已登录' : ''}
