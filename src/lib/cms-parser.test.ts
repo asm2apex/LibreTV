@@ -7,6 +7,7 @@ import {
   isAdultContent,
   isRelevant,
   normalizeTitle,
+  parseCmsJson,
   parseDetail,
   parseDetailPageHtml,
   parseSearchList,
@@ -182,6 +183,60 @@ describe('isRelevant', () => {
   it('空关键词或空标题不参与过滤', () => {
     expect(isRelevant('任意标题', '')).toBe(true);
     expect(isRelevant('', '任意')).toBe(true);
+  });
+});
+
+describe('parseCmsJson', () => {
+  it('大整数字段以字符串形式保留（雪花 ID 场景）', () => {
+    // 真实样本：巨量资源（juliang.live）用 18 位雪花 ID 做 vod_id，
+    // 直接 JSON.parse 会把 629182741249785860 丢成 629182741249785900，
+    // 导致详情接口拿脏 ID 回查永远 404。
+    const text = '{"code":1,"list":[{"vod_id":629182741249785860,"vod_name":"庆余年","type_id":123}]}';
+    const data = parseCmsJson(text) as {
+      list: Array<{ vod_id: unknown; type_id: unknown; vod_name: string }>;
+    };
+    expect(typeof data.list[0].vod_id).toBe('string');
+    expect(data.list[0].vod_id).toBe('629182741249785860');
+    // type_id 远小于 2^53 时按原生类型返回，不强求字符串
+    expect(data.list[0].type_id).toBe(123);
+    expect(data.list[0].vod_name).toBe('庆余年');
+  });
+
+  it('普通自增 ID 源行为与原生 JSON.parse 一致', () => {
+    const text = '{"list":[{"vod_id":12345,"vod_name":"A"}],"pagecount":3}';
+    const data = parseCmsJson(text) as { list: Array<{ vod_id: number }>; pagecount: number };
+    expect(data.list[0].vod_id).toBe(12345);
+    expect(data.pagecount).toBe(3);
+  });
+
+  it('端到端：parseCmsJson → parseSearchList 后雪花 ID 原样进入 vodId', () => {
+    const text = '{"list":[{"vod_id":629182741249785860,"vod_name":"庆余年","vod_pic":"https://img/x.jpg"}]}';
+    const items = parseSearchList(parseCmsJson(text), source);
+    expect(items[0].vodId).toBe('629182741249785860');
+    expect(items[0].name).toBe('庆余年');
+  });
+
+  it('端到端：parseCmsJson → parseDetail 后分集 URL 正常解出', () => {
+    // 巨量详情的真实格式缩略版：单线路、# 分集、$ 分 name/url
+    const text = JSON.stringify({
+      list: [
+        {
+          vod_id: 1,
+          vod_name: 'X',
+          vod_play_url: '第1集$https://cdn/a.m3u8#第2集$https://cdn/b.m3u8',
+        },
+      ],
+    });
+    const detail = parseDetail(parseCmsJson(text), source);
+    expect(detail.episodes).toEqual(['https://cdn/a.m3u8', 'https://cdn/b.m3u8']);
+  });
+
+  it('空响应抛错', () => {
+    expect(() => parseCmsJson('')).toThrow();
+  });
+
+  it('非法 JSON 抛错', () => {
+    expect(() => parseCmsJson('<html>403</html>')).toThrow();
   });
 });
 

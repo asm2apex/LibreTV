@@ -1,3 +1,4 @@
+import JSONbigFactory from 'json-bigint';
 import type { SearchResultItem, VideoDetail } from './types';
 
 /**
@@ -15,6 +16,25 @@ const UA_HEADERS = {
 
 export function cmsRequestHeaders(): Record<string, string> {
   return { ...UA_HEADERS };
+}
+
+/**
+ * CMS 响应里的雪花 ID 问题：部分源站（如巨量资源 juliang.live）用 18 位雪花 ID 做 vod_id，
+ * 超出 JS Number.MAX_SAFE_INTEGER（2^53-1，16 位），`res.json()` / `JSON.parse` 会丢末两位精度。
+ * 结果是：搜索能用、点详情时拿着「脏 ID」回查对面接口 → 对方查不到 → 空 list → 详情页永远 404。
+ *
+ * 修法：所有 CMS 响应都走 text() → 本工具 parse，大整数一律落为字符串。
+ * 自增 ID 源（远小于 2^53）照常走字符串化路径，无副作用。
+ */
+const jsonBigParser = JSONbigFactory({ storeAsString: true, useNativeBigInt: false });
+
+export function parseCmsJson(text: string): unknown {
+  if (!text) throw new Error('API返回空响应');
+  try {
+    return jsonBigParser.parse(text);
+  } catch (err) {
+    throw new Error(`API返回的 JSON 无法解析：${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 /** 搜索响应 → 统一结果列表 */

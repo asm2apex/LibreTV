@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { guardRequest } from '@/lib/api-guard';
-import { cmsRequestHeaders, filterAdultResults, filterRelevantResults, normalizeTitle, parseSearchList } from '@/lib/cms-parser';
+import { cmsRequestHeaders, filterAdultResults, filterRelevantResults, normalizeTitle, parseCmsJson, parseSearchList } from '@/lib/cms-parser';
 import { fetchUpstream, getCache, setCache } from '@/lib/fetch-utils';
 import { checkUpstreamAllowed } from '@/lib/ssrf';
 import type { SearchResponse, SearchStreamEvent, SourceConfig, SourceSearchOutcome } from '@/lib/types';
@@ -99,7 +99,9 @@ async function searchSource(source: SourceConfig, wd: string): Promise<SourceSea
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    // 走 text() + parseCmsJson 而不是 res.json()：部分源站用雪花 ID 做 vod_id，
+    // JSON.parse 直接吃进来会丢精度，详情回查就会 404
+    return parseCmsJson(await res.text());
   };
 
   const run = async (): Promise<SourceSearchOutcome> => {

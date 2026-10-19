@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { guardRequest } from '@/lib/api-guard';
-import { cmsRequestHeaders, parseDetail, parseDetailPageHtml } from '@/lib/cms-parser';
+import { cmsRequestHeaders, parseCmsJson, parseDetail, parseDetailPageHtml } from '@/lib/cms-parser';
 import { fetchUpstream, getCache, setCache } from '@/lib/fetch-utils';
 import { checkUpstreamAllowed } from '@/lib/ssrf';
 import type { SourceConfig, VideoDetail } from '@/lib/types';
@@ -62,7 +62,9 @@ export async function GET(req: Request) {
     const api = `${source.url.replace(/\/+$/, '')}?ac=videolist&ids=${encodeURIComponent(id)}`;
     const res = await fetchUpstream(api, { timeoutMs: 10000, headers: cmsRequestHeaders() });
     if (res.ok) {
-      const data = await res.json();
+      // 走 text() + parseCmsJson 而不是 res.json()：雪花 ID 源的 vod_id/type_id 必须以字符串入内存，
+      // 否则下游 parseDetail 已经拿不到对得上原响应的 ID 了
+      const data = parseCmsJson(await res.text());
       try {
         const detail = parseDetail(data, source);
         if (detail.episodes.length > 0) {
