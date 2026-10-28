@@ -125,6 +125,10 @@ body {
 .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
+/* 横滑行/子 Tab 隐藏滚动条（触屏与触控板直接拖动，滚动条只会造成视觉噪声） */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 /* 播放器集数激活态 */
 .episode-active {
   background: rgb(var(--c-accent)) !important;
