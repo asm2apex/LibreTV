@@ -24,6 +24,18 @@ const nextConfig: NextConfig = {
   env: { APP_VERSION: readAppVersion() },
   // 采集站/豆瓣等上游地址在运行时由用户配置，构建期无法枚举，关闭图片优化改用 <img>
   images: { unoptimized: true },
+  // HTML 文档必须每次再验证：Next 默认对静态页下发 s-maxage=31536000（CDN 缓存一年），
+  // 自托管且无法主动清 CDN 缓存的部署里，版本更新会让用户长期停在旧壳（真实踩过）。
+  // 带 hash 的静态资产仍走 immutable 缓存，不受影响。
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        has: [{ type: 'header', key: 'sec-fetch-dest', value: 'document' }],
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
