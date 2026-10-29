@@ -52,8 +52,9 @@ d('hongguo live 链路', () => {
     expect(episodes.length).toBeGreaterThan(0);
 
     const vid = episodes[0]!.vid;
-    const streams = await app.resolveStreams(vid).catch(() => []);
-    // 降级期 streams 可能为空，跳过档位断言但 stream 兜底 360p 仍应可出字节
+    // 健康降级期 resolveStreams 注定失败（走 360P 兜底），跳过解密断言；
+    // 非降级期的失败必须暴露——不允许 catch 吞掉让断言空转
+    const streams = app.health.degraded() ? [] : await app.resolveStreams(vid);
     if (streams.length > 0) {
       const pick = streams.find((s) => s.definition === '1080p') ?? streams[0]!;
       const file = await pipeline.ensureDecrypted(vid, pick.definition, async () => pick);
