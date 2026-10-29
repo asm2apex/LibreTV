@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { guardRequest } from '@/lib/api-guard';
-import { andGetRaw, getDetail } from '@/lib/huangguo/client';
-import { localizePlaylist } from '@/lib/huangguo/playlist';
+import { andGetRaw, getDetail, HUANGGUO_API_BASE } from '@/lib/huangguo/client';
+import { localizePlaylist, type SegMode } from '@/lib/huangguo/playlist';
 import { safeToken } from '@/lib/huangguo/projection';
 
 export const runtime = 'nodejs';
+
+/** direct=浏览器直连 CDN（默认，服务器零视频流量）；proxy=分片/key 全代理（回退） */
+const SEG_MODE: SegMode = process.env.HUANGGUO_SEG_MODE === 'proxy' ? 'proxy' : 'direct';
 
 /**
  * 剧集正片 playlist 透传 + 本源化重写：
@@ -55,7 +58,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string; ep:
         return NextResponse.json({ error: '上游未返回播放列表' }, { status: 502 });
       }
     }
-    const playlist = localizePlaylist(raw.toString('utf8'));
+    const playlist = localizePlaylist(raw.toString('utf8'), SEG_MODE, HUANGGUO_API_BASE);
     return new Response(playlist, {
       headers: {
         'Content-Type': 'application/vnd.apple.mpegurl',

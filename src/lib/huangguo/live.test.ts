@@ -40,13 +40,25 @@ d('huangguo live 链路', () => {
     const raw = await andGetRaw(`/api/app/vid/h5/m3u8/${detail.chapters[0].token}`);
     expect(raw.subarray(0, 7).toString('utf8')).toBe('#EXTM3U');
     const text = raw.toString('utf8');
-    const local = localizePlaylist(text);
-    expect(local).not.toContain('URI="/api/app/vid/sec"');
+    const API = 'https://d2jgz4wrcczusu.cloudfront.net';
+
+    // direct（默认）：key 绝对化到上游、分片原样直连
+    const direct = localizePlaylist(text, 'direct', API);
     if (text.includes('URI=')) {
-      expect(local).toContain('URI="/api/huangguo/vid-sec"');
+      expect(direct).toContain(`URI="${API}/api/app/vid/sec"`);
     }
-    // 分片行全部本源化（不再有裸 http 行）
-    for (const line of local.split('\n')) {
+    for (const line of direct.split('\n')) {
+      const t = line.trim();
+      if (t && !t.startsWith('#')) expect(t.startsWith('/api/')).toBe(false);
+    }
+
+    // proxy（回退）：key 本源化、分片全部走 seg 代理
+    const proxied = localizePlaylist(text, 'proxy', API);
+    expect(proxied).not.toContain('URI="/api/app/vid/sec"');
+    if (text.includes('URI=')) {
+      expect(proxied).toContain('URI="/api/huangguo/vid-sec"');
+    }
+    for (const line of proxied.split('\n')) {
       const t = line.trim();
       if (t && !t.startsWith('#')) {
         expect(t.startsWith('/api/huangguo/seg?u=')).toBe(true);
