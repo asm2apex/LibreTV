@@ -97,6 +97,13 @@ export function Header({ showSearch = false }: { showSearch?: boolean }) {
           <div className="flex-1 sm:hidden" />
 
           <nav className="flex items-center gap-1 ml-auto">
+            {/* 直白的首页入口：部分用户不认识「点 Logo 回首页」的惯例，给一个文字按钮 */}
+            <HeaderLink href="/" active={pathname === '/'}>
+              影视
+            </HeaderLink>
+            <HeaderLink href="/hongguo" active={pathname === '/hongguo'}>
+              红果
+            </HeaderLink>
             <HeaderLink href="/huangguo" active={pathname === '/huangguo'}>
               黄果
             </HeaderLink>
